@@ -4,6 +4,7 @@ import { useSequencerStore } from '@/stores/sequencer'
 import type { PatchConnection } from '@/models/patch-connection.model'
 import { PatchConnectionEndpoint, storedPatternKey } from '@/models/patch-connection-endpoints.enum'
 import {
+  laneDirectionIndexOf,
   laneIds,
   laneIndexOf,
   maxSteps,
@@ -13,11 +14,13 @@ import {
 
 const storedStateDebounceMs = 400
 
+/// Direction travels as its wire index, so a sent lane is comparable field by field.
 interface SentLane {
   values: number[]
   start: number
   length: number
   offset: number
+  direction: number
   outputMin: number
   outputMax: number
 }
@@ -30,7 +33,7 @@ interface SentLane {
 export function usePatchSync() {
   const patchConnection = inject<PatchConnection>('patchConnection')
   const store = useSequencerStore()
-  const { scenes, soloedVoices } = storeToRefs(store)
+  const { scenes, soloedVoices, editSceneIndex, isAuditioningEditScene } = storeToRefs(store)
 
   const sentLanes = new Map<string, SentLane>()
 
@@ -60,6 +63,7 @@ export function usePatchSync() {
       sent.start !== lane.start ||
       sent.length !== lane.length ||
       sent.offset !== lane.offset ||
+      sent.direction !== lane.direction ||
       sent.outputMin !== lane.outputMin ||
       sent.outputMax !== lane.outputMax
 
@@ -71,6 +75,7 @@ export function usePatchSync() {
         start: lane.start,
         length: lane.length,
         offset: lane.offset,
+        direction: lane.direction,
         low: lane.outputMin,
         high: lane.outputMax
       })
@@ -90,6 +95,7 @@ export function usePatchSync() {
             start: lane.start,
             length: lane.length,
             offset: lane.offset,
+            direction: laneDirectionIndexOf(lane.direction),
             outputMin: lane.outputMin,
             outputMax: lane.outputMax
           })
@@ -126,11 +132,23 @@ export function usePatchSync() {
     patchConnection?.sendEventOrValue(PatchConnectionEndpoint.SoloMask, mask)
   }
 
+  /**
+   * The scene parameter belongs to the host and is never written from here, so hearing the scene
+   * being edited is asked for separately. Zero hands playback back to whatever the host wants.
+   */
+  function sendAuditionScene() {
+    patchConnection?.sendEventOrValue(
+      PatchConnectionEndpoint.AuditionScene,
+      isAuditioningEditScene.value ? editSceneIndex.value + 1 : 0
+    )
+  }
+
   function sendEverything() {
     sentLanes.clear()
     sendChangedLanes()
     sendSettings()
     sendSoloMask()
+    sendAuditionScene()
   }
 
   function scheduleStoredStateWrite() {
@@ -160,9 +178,8 @@ export function usePatchSync() {
     store.setPlayheadSlot(position.voice, position.slot)
   }
 
-  /// The patch decides what is playing - whether that came from the host or from this editor.
   function onSceneChanged(value: number) {
-    store.setPlayingScene(Math.round(value) - 1)
+    store.setParameterScene(Math.round(value) - 1)
   }
 
   /// Every scene is watched, since editing one that is not playing still has to reach the patch.
@@ -177,6 +194,10 @@ export function usePatchSync() {
     { deep: true }
   )
 
+  /// Which scene is being edited only matters to the patch while the editor is listening to it,
+  /// and it is a view choice either way, so it stays out of the stored state.
+  const stopWatchingAudition = watch([editSceneIndex, isAuditioningEditScene], sendAuditionScene)
+
   onMounted(() => {
     patchConnection?.addStoredStateValueListener(onStoredStateChanged)
     patchConnection?.addEndpointListener(PatchConnectionEndpoint.Playhead, onPlayheadChanged)
@@ -189,7 +210,13 @@ export function usePatchSync() {
 
   onBeforeUnmount(() => {
     stopWatching()
+    stopWatchingAudition()
     clearTimeout(storedStateTimer)
+
+    // The audition belongs to the open editor, so closing it hands playback back to the host
+    // rather than leaving the parameter overridden by a window that is no longer there.
+    patchConnection?.sendEventOrValue(PatchConnectionEndpoint.AuditionScene, 0)
+
     patchConnection?.removeStoredStateValueListener(onStoredStateChanged)
     patchConnection?.removeEndpointListener(PatchConnectionEndpoint.Playhead, onPlayheadChanged)
     patchConnection?.removeParameterListener(PatchConnectionEndpoint.Scene, onSceneChanged)

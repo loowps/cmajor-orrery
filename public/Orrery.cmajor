@@ -16,7 +16,8 @@
     pattern is stable - the editor can draw exactly what will play.
 
     Each lane cycles through a window of its own value array, so a lane of length 5 inside a
-    16-slot pattern phases against one of length 16.
+    16-slot pattern phases against one of length 16. A lane can walk that window forwards,
+    backwards or as a pendulum, which changes its effective period without redrawing anything.
 
     Trigger and hold decide the rhythm and are read at every slot. Pitch, velocity and gate
     describe a note and advance once per note, so a five-note pitch lane keeps its order however
@@ -42,11 +43,19 @@ processor Orrery [[ main ]]
 
     //==============================================================================
     /**
-        The only automatable parameter. A scene holds a whole board - every voice with its lanes
-        and its settings - so the host arranges by switching scenes rather than by automating
-        forty knobs, and nothing else can be fighting a scene for ownership of a value.
+        The only automatable parameter, and the editor never writes to it. A scene holds a whole
+        board - every voice with its lanes and its settings - so the host arranges by switching
+        scenes rather than by automating forty knobs, and nothing else can be fighting a scene
+        for ownership of a value.
     */
-    input event int32 sceneIn [[ name: "Scene", min: 1, max: 4, init: 1, step: 1 ]];
+    input event int32 sceneIn [[ name: "Scene", min: 1, max: 8, init: 1, step: 1 ]];
+
+    /**
+        Lets the editor hear the scene it is working on without touching the parameter the host
+        owns. A listening aid like the solo mask, not a second way to arrange: zero hands playback
+        straight back to whatever the host last asked for.
+    */
+    input event int32 auditionSceneIn;
 
     input event LaneValues    laneValuesIn;
     input event LaneSettings  laneSettingsIn;
@@ -73,6 +82,7 @@ processor Orrery [[ main ]]
         int32 start;
         int32 length;
         int32 offset;
+        int32 direction;
         float32 low;
         float32 high;
     }
@@ -108,7 +118,11 @@ processor Orrery [[ main ]]
     let voiceCount = 8;
     let laneCount  = 5;
     let maxSteps   = 64;
-    let sceneCount = 4;
+    let sceneCount = 8;
+
+    let directionForward  = 0;
+    let directionReverse  = 1;
+    let directionPendulum = 2;
 
     let laneTrigger  = 0;
     let laneHold     = 1;
@@ -127,6 +141,8 @@ processor Orrery [[ main ]]
     int32[totalLanes]    windowLength;
     /// Where inside the window a lane begins reading, so lanes can share values out of phase.
     int32[totalLanes]    windowOffset;
+    /// Which way the lane walks away from that point.
+    int32[totalLanes]    windowDirection;
     float32[totalLanes]  outputLow;
     float32[totalLanes]  outputHigh;
 
@@ -164,6 +180,13 @@ processor Orrery [[ main ]]
 
     int32 currentScene;
 
+    /// The host's standing choice, held apart from what is sounding so that auditioning a scene
+    /// can hand playback back to it rather than overwriting it.
+    int32 parameterScene;
+
+    /// The scene the editor is listening to, counted from one. Zero means it is not listening.
+    int32 auditionScene;
+
     /// Bit per voice, set by the editor. Zero means nothing is soloed and the scene decides.
     int32 soloMask;
 
@@ -184,7 +207,14 @@ processor Orrery [[ main ]]
     /// The host counts scenes from one, everything inside here counts from zero.
     event sceneIn (int32 value)
     {
-        loadScene (clamp (value, 1, sceneCount) - 1);
+        parameterScene = clamp (value, 1, sceneCount) - 1;
+        applySceneChoice();
+    }
+
+    event auditionSceneIn (int32 value)
+    {
+        auditionScene = clamp (value, 0, sceneCount);
+        applySceneChoice();
     }
 
     event soloMaskIn (int32 mask)
@@ -231,11 +261,12 @@ processor Orrery [[ main ]]
 
         let lane = wrap<totalLanes> (laneIndex (update.scene, update.voice, update.lane));
 
-        windowLength[lane] = clamp (update.length, 1, maxSteps);
-        windowStart[lane]  = clamp (update.start, 0, maxSteps - windowLength[lane]);
-        windowOffset[lane] = clamp (update.offset, 0, windowLength[lane] - 1);
-        outputLow[lane]    = update.low;
-        outputHigh[lane]   = update.high;
+        windowLength[lane]    = clamp (update.length, 1, maxSteps);
+        windowStart[lane]     = clamp (update.start, 0, maxSteps - windowLength[lane]);
+        windowOffset[lane]    = clamp (update.offset, 0, windowLength[lane] - 1);
+        windowDirection[lane] = clamp (update.direction, directionForward, directionPendulum);
+        outputLow[lane]       = update.low;
+        outputHigh[lane]      = update.high;
 
         markRebuild (update.scene, update.voice);
     }
@@ -355,6 +386,12 @@ processor Orrery [[ main ]]
         }
     }
 
+    /// The editor's audition wins while it lasts, and the parameter is waiting underneath it.
+    void applySceneChoice()
+    {
+        loadScene (auditionScene > 0 ? auditionScene - 1 : parameterScene);
+    }
+
     /**
         Switching scene swaps the whole board. Pass positions are deliberately left alone, so a
         scene change lands wherever the music already is rather than restarting every voice.
@@ -376,6 +413,44 @@ processor Orrery [[ main ]]
 
     float64 framesPer16th() { return (15.0 / float64 (max (hostBpm, 1.0f))) * processor.frequency; }
 
+    /// Read indices only ever grow, but reverse subtracts from them, so the wrap has to survive
+    /// a negative.
+    int32 wrapWithin (int32 value, int32 length)
+    {
+        return ((value % length) + length) % length;
+    }
+
+    /**
+        Where inside its window the lane has travelled to. Forward and reverse walk away from the
+        phase in either direction; pendulum folds the same count back on itself, so it turns at
+        the window's edges instead of jumping back to the start.
+    */
+    int32 windowPosition (int32 lane, int32 readIndex)
+    {
+        let here = wrap<totalLanes> (lane);
+        let length = windowLength[here];
+
+        // Also covers a lane the editor has not described yet, whose length is still zero.
+        if (length < 2)
+            return 0;
+
+        let offset = windowOffset[here];
+        let direction = windowDirection[here];
+
+        if (direction == directionReverse)
+            return wrapWithin (offset - readIndex, length);
+
+        if (direction == directionPendulum)
+        {
+            let span = length * 2 - 2;
+            let bounce = wrapWithin (offset + readIndex, span);
+
+            return bounce < length ? bounce : span - bounce;
+        }
+
+        return wrapWithin (offset + readIndex, length);
+    }
+
     /**
         Mirrors the editor: a lane cycles through the window its start and length describe, and
         the stored position is mapped onto the output range only at the point of use - so moving
@@ -383,9 +458,9 @@ processor Orrery [[ main ]]
     */
     float32 laneOutput (int32 voice, int32 lane, int32 readIndex)
     {
-        let here = wrap<totalLanes> (laneIndex (currentScene, voice, lane));
-        let length = max (windowLength[here], 1);
-        let index = windowStart[here] + ((readIndex + windowOffset[here]) % length);
+        let which = laneIndex (currentScene, voice, lane);
+        let here = wrap<totalLanes> (which);
+        let index = windowStart[here] + windowPosition (which, readIndex);
         let base = laneBase (currentScene, voice, lane);
         let normalised = stepValues[wrap<totalValues> (base + index)];
 
@@ -532,7 +607,7 @@ processor Orrery [[ main ]]
             voiceCurrentSlot[v] = -1;
         }
 
-        loadScene (0);
+        applySceneChoice();
     }
 
     //==============================================================================

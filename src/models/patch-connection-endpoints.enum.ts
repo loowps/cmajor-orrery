@@ -9,6 +9,7 @@ export enum PatchConnectionEndpoint {
   VoiceSettings = 'voiceSettingsIn',
   SoloMask = 'soloMaskIn',
   Scene = 'sceneIn',
+  AuditionScene = 'auditionSceneIn',
   Playhead = 'playheadOut'
 }
 

@@ -1,33 +1,17 @@
 <script setup lang="ts">
-import { inject } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSequencerStore } from '@/stores/sequencer'
 import { sceneCount } from '@/models/sequencer.model'
-import type { PatchConnection } from '@/models/patch-connection.model'
-import { PatchConnectionEndpoint } from '@/models/patch-connection-endpoints.enum'
 import ActionIcon from '@/components/ActionIcon.vue'
 
-const patchConnection = inject<PatchConnection>('patchConnection')
-
 const store = useSequencerStore()
-const { editSceneIndex, playingSceneIndex, copiedScene } = storeToRefs(store)
-
-/**
- * Playback belongs to the patch, so this asks for the change rather than making it, wrapped in a
- * gesture so the host can record it. The scene parameter is echoed back and settles the marker;
- * moving it here too keeps the click responsive when nothing is listening.
- *
- * The host may point playback somewhere else at any time, which is the whole point: what is being
- * edited and what is sounding are separate choices.
- */
-function select(index: number) {
-  store.selectEditScene(index)
-  store.setPlayingScene(index)
-
-  patchConnection?.sendParameterGestureStart(PatchConnectionEndpoint.Scene)
-  patchConnection?.sendEventOrValue(PatchConnectionEndpoint.Scene, index + 1)
-  patchConnection?.sendParameterGestureEnd(PatchConnectionEndpoint.Scene)
-}
+const {
+  editSceneIndex,
+  parameterSceneIndex,
+  soundingSceneIndex,
+  isAuditioningEditScene,
+  copiedScene
+} = storeToRefs(store)
 </script>
 
 <template>
@@ -41,15 +25,32 @@ function select(index: number) {
         class="slot"
         :class="{
           editing: editSceneIndex === index - 1,
-          playing: playingSceneIndex === index - 1
+          parameter: parameterSceneIndex === index - 1,
+          playing: soundingSceneIndex === index - 1
         }"
         :title="`Edit scene ${index}`"
-        @click="select(index - 1)"
+        @click="store.selectEditScene(index - 1)"
       >
         {{ index }}
         <span class="state" />
       </button>
     </div>
+
+    <!--
+      The arrangement stays the host's: this points playback at the scene being edited for as
+      long as it is on, and hands it straight back when it is switched off.
+    -->
+    <ActionIcon
+      name="speaker"
+      tone="marker"
+      :active="isAuditioningEditScene"
+      :title="
+        isAuditioningEditScene
+          ? 'Listening to the scene being edited — click to follow the Scene parameter again'
+          : 'Listen to the scene being edited, leaving the Scene parameter alone'
+      "
+      @click="store.toggleAuditionEditScene()"
+    />
 
     <div class="clipboard">
       <ActionIcon name="copy" title="Copy this scene" @click="store.copyScene()" />
@@ -83,13 +84,17 @@ function select(index: number) {
 
 /**
  * Two states at once, carried the same way the voice buttons carry theirs: the scene being edited
- * is filled, and a light along the bottom says which one is playing. They are usually the same
- * slot, so the light only speaks up when they part company.
+ * is filled, and a light along the bottom says what is sounding. They are usually the same slot,
+ * so the light only speaks up when they part company - fully lit for what plays, half lit for the
+ * parameter waiting underneath an audition.
  */
 .slot {
   position: relative;
   width: var(--control-size);
   height: var(--control-size);
+  /* Eight of these is the widest the header gets, so they hold their size and the bar overflows
+     rather than squashing them into unreadable slivers. */
+  flex: none;
   display: grid;
   place-items: center;
   padding: 0;
@@ -129,6 +134,12 @@ function select(index: number) {
   border-radius: 2px;
   background: var(--marker);
   opacity: 0.22;
+}
+
+/// Half lit while an audition is sounding elsewhere, so the host's standing choice is still
+/// visible - it is waiting underneath, not gone.
+.slot.parameter .state {
+  opacity: 0.55;
 }
 
 .slot.playing .state {

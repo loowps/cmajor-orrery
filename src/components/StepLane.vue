@@ -3,7 +3,14 @@ import { computed, ref, useTemplateRef } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSequencerStore } from '@/stores/sequencer'
 import { useStepPainter } from '@/composables/useStepPainter'
-import { clamp, laneDefinition, laneOutput, type LaneId } from '@/models/sequencer.model'
+import {
+  clamp,
+  laneDefinition,
+  laneDirectionLabels,
+  laneOutput,
+  nextLaneDirection,
+  type LaneId
+} from '@/models/sequencer.model'
 import { laneReadIndexAt } from '@/models/pattern-resolver'
 import LaneRangeBar from '@/components/LaneRangeBar.vue'
 import LaneRangeField from '@/components/LaneRangeField.vue'
@@ -84,6 +91,13 @@ function emphasisFor(cell: LaneCell) {
   if (!cell.isInWindow) return 'outside'
   return threshold.value === null || cell.crossesThreshold ? 'on' : 'below'
 }
+
+const directionTitle = computed(() => {
+  const current = laneDirectionLabels[lane.value.direction]
+  const next = laneDirectionLabels[nextLaneDirection(lane.value.direction)]
+
+  return `Direction: ${current} — click for ${next}`
+})
 
 const outputMin = computed({
   get: () => lane.value.outputMin,
@@ -181,6 +195,15 @@ const paintReadout = computed(() => {
     <div class="lane-header">
       <div class="header-row">
         <span class="lane-label">{{ definition.label }}</span>
+
+        <!-- How the lane reads rather than something done to it, so it leads the row. -->
+        <ActionIcon
+          :name="lane.direction"
+          compact
+          :active="lane.direction !== 'forward'"
+          :title="directionTitle"
+          @click="store.cycleLaneDirection(laneId)"
+        />
 
         <ActionIcon
           name="pencil"
@@ -321,9 +344,13 @@ const paintReadout = computed(() => {
   gap: var(--space-2);
 }
 
+/// The row is five icons and a name inside the header's width, so the name gives way first.
 .lane-label {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 0.74rem;
   letter-spacing: 0.02em;
   color: var(--text-dim);

@@ -12,8 +12,34 @@ import {
   type Voice
 } from '@/models/sequencer.model'
 
+function wrapWithin(value: number, length: number): number {
+  return ((value % length) + length) % length
+}
+
+/**
+ * Where inside its window the lane has travelled to. Forward and reverse walk away from the
+ * phase in either direction; pendulum folds the same count back on itself, so it turns at the
+ * window's edges instead of jumping back to the start.
+ */
+function windowPosition(lane: LaneState, readIndex: number): number {
+  if (lane.length < 2) {
+    return 0
+  }
+
+  if (lane.direction === 'reverse') {
+    return wrapWithin(lane.offset - readIndex, lane.length)
+  }
+
+  if (lane.direction === 'pendulum') {
+    const bounce = wrapWithin(lane.offset + readIndex, lane.length * 2 - 2)
+    return bounce < lane.length ? bounce : lane.length * 2 - 2 - bounce
+  }
+
+  return wrapWithin(lane.offset + readIndex, lane.length)
+}
+
 export function laneValueIndex(lane: LaneState, readIndex: number): number {
-  return lane.start + ((readIndex + lane.offset) % lane.length)
+  return lane.start + windowPosition(lane, readIndex)
 }
 
 export function laneValueAt(lane: LaneState, readIndex: number): number {

@@ -1,12 +1,36 @@
 export const maxSteps = 64
 export const minPatternLength = 4
-export const sceneCount = 4
+export const sceneCount = 8
 
 export type LaneId = 'trigger' | 'hold' | 'pitch' | 'velocity' | 'gate'
 
 export type SlotState = 'trigger' | 'hold' | 'rest'
 
 export type LaneAdvanceMode = 'slot' | 'note'
+
+/**
+ * Which way a lane walks its window. The phase marks the cell it reads first whichever way it
+ * travels, so changing direction turns the material round without moving the entry point.
+ */
+export type LaneDirection = 'forward' | 'reverse' | 'pendulum'
+
+/// The patch identifies directions by position, so this order has to match the direction
+/// constants in Orrery.cmajor.
+export const laneDirections: LaneDirection[] = ['forward', 'reverse', 'pendulum']
+
+export const laneDirectionLabels: Record<LaneDirection, string> = {
+  forward: 'Forward',
+  reverse: 'Reverse',
+  pendulum: 'Pendulum'
+}
+
+export function laneDirectionIndexOf(direction: LaneDirection): number {
+  return Math.max(0, laneDirections.indexOf(direction))
+}
+
+export function nextLaneDirection(direction: LaneDirection): LaneDirection {
+  return laneDirections[(laneDirectionIndexOf(direction) + 1) % laneDirections.length]
+}
 
 export interface LaneDefinition {
   id: LaneId
@@ -41,6 +65,7 @@ export interface LaneState {
    * answer each other rather than speaking at once.
    */
   offset: number
+  direction: LaneDirection
   values: number[]
   outputMin: number
   outputMax: number
@@ -184,8 +209,17 @@ export interface Scene {
   voices: Voice[]
 }
 
+export const snapshotVersion = 11
+
+/**
+ * Nothing a later build added is required to read an earlier pattern: lane direction arrived in
+ * 10 and defaults to forward, and 11 widened the board from four scenes to eight, which is a
+ * longer list rather than a different one. Both still load as what they were.
+ */
+export const loadableSnapshotVersions = [9, 10, snapshotVersion]
+
 export interface PatternSnapshot {
-  version: 9
+  version: number
   scenes: Scene[]
 }
 
@@ -218,6 +252,7 @@ export function createLaneState(definition: LaneDefinition): LaneState {
     start: 0,
     length: definition.defaultLength,
     offset: 0,
+    direction: 'forward',
     values: new Array<number>(maxSteps).fill(definition.defaultValue),
     outputMin: definition.defaultOutputMin,
     outputMax: definition.defaultOutputMax,

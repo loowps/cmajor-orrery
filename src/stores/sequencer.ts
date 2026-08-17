@@ -7,11 +7,15 @@ import {
   holdThresholdOf,
   laneDefinition,
   laneDefinitions,
+  laneDirections,
   laneIds,
+  loadableSnapshotVersions,
   maxSteps,
   minPatternLength,
+  nextLaneDirection,
   quantizeToLane,
   sceneCount,
+  snapshotVersion,
   type LaneId,
   type LaneState,
   type PatternSnapshot,
@@ -80,11 +84,23 @@ export const useSequencerStore = defineStore('sequencer', () => {
   const scenes = ref<Scene[]>(createStarterScenes())
 
   /**
-   * Two independent choices: the scene the editor works on, and the scene the patch plays. Keeping
-   * them apart is what lets the next section be prepared while the current one is sounding.
+   * Two independent choices: the scene the editor works on, and the scene the host has asked for.
+   * Keeping them apart is what lets the next section be prepared while the current one is
+   * sounding, so selecting a scene to edit never writes to the parameter that arranges the track.
    */
   const editSceneIndex = ref(0)
-  const playingSceneIndex = ref(0)
+  const parameterSceneIndex = ref(0)
+
+  /**
+   * Auditioning points playback at whatever is being edited, and stops when it is switched off -
+   * a listening aid over the host's choice, like solo is over a voice's own enabled flag. It is
+   * the editor's way of hearing its work without ever taking the parameter away from the host.
+   */
+  const isAuditioningEditScene = ref(false)
+
+  const soundingSceneIndex = computed(() =>
+    isAuditioningEditScene.value ? editSceneIndex.value : parameterSceneIndex.value
+  )
 
   const voices = computed(() => scenes.value[editSceneIndex.value].voices)
 
@@ -118,8 +134,14 @@ export const useSequencerStore = defineStore('sequencer', () => {
     editSceneIndex.value = clamp(Math.round(index), 0, sceneCount - 1)
   }
 
-  function setPlayingScene(index: number) {
-    playingSceneIndex.value = clamp(Math.round(index), 0, sceneCount - 1)
+  /// Only ever called with what the patch reports, so the editor follows the parameter rather
+  /// than predicting it.
+  function setParameterScene(index: number) {
+    parameterSceneIndex.value = clamp(Math.round(index), 0, sceneCount - 1)
+  }
+
+  function toggleAuditionEditScene() {
+    isAuditioningEditScene.value = !isAuditioningEditScene.value
   }
 
   function copyScene(index: number = editSceneIndex.value) {
@@ -199,12 +221,21 @@ export const useSequencerStore = defineStore('sequencer', () => {
     lane.offset = clamp(Math.round(offset), 0, lane.length - 1)
   }
 
-  function clampWindowsOf(voice: Voice) {
+  function cycleLaneDirection(laneId: LaneId) {
+    const lane = laneOf(laneId)
+    lane.direction = nextLaneDirection(lane.direction)
+  }
+
+  function normalizeLanesOf(voice: Voice) {
     for (const laneId of laneIds) {
       const lane = voice.lanes[laneId]
       lane.length = clamp(lane.length, 1, voice.patternLength)
       lane.start = clamp(lane.start, 0, voice.patternLength - lane.length)
       lane.offset = clamp(Math.round(lane.offset ?? 0), 0, lane.length - 1)
+
+      if (!laneDirections.includes(lane.direction)) {
+        lane.direction = 'forward'
+      }
     }
   }
 
@@ -307,7 +338,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     }
 
     voice.patternLength = clamp(Math.round(length), minPatternLength, maxSteps)
-    clampWindowsOf(voice)
+    normalizeLanesOf(voice)
   }
 
   function setPatternLength(length: number) {
@@ -334,7 +365,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
 
   function toSnapshot(): PatternSnapshot {
     return {
-      version: 9,
+      version: snapshotVersion,
       scenes: JSON.parse(JSON.stringify(toRaw(scenes.value)))
     }
   }
@@ -348,6 +379,18 @@ export const useSequencerStore = defineStore('sequencer', () => {
     return laneIds.every((laneId) => Array.isArray(voice.lanes?.[laneId]?.values))
   }
 
+  /**
+   * A pattern written by a build with fewer scenes keeps every one it had, and the scenes this
+   * build adds arrive where a new instance would have left them - so widening the board reads an
+   * older pattern back rather than discarding it.
+   */
+  function padScenes(stored: Scene[]): Scene[] {
+    return Array.from(
+      { length: sceneCount },
+      (_unused, index) => stored[index] ?? { voices: createStarterVoices() }
+    )
+  }
+
   function isCompleteScene(scene: Scene): boolean {
     return (
       Array.isArray(scene?.voices) &&
@@ -357,16 +400,20 @@ export const useSequencerStore = defineStore('sequencer', () => {
   }
 
   function applySnapshot(snapshot: PatternSnapshot) {
-    if (snapshot.version !== 9 || !Array.isArray(snapshot.scenes)) {
+    if (!loadableSnapshotVersions.includes(snapshot.version) || !Array.isArray(snapshot.scenes)) {
       return
     }
 
-    if (snapshot.scenes.length !== sceneCount || !snapshot.scenes.every(isCompleteScene)) {
+    /// Fewer scenes than this build has is an older pattern; none at all, or more than there is
+    /// room for, is not a pattern this build can make sense of.
+    const stored = snapshot.scenes
+
+    if (stored.length < 1 || stored.length > sceneCount || !stored.every(isCompleteScene)) {
       return
     }
 
-    scenes.value = snapshot.scenes
-    scenes.value.forEach((scene) => scene.voices.forEach(clampWindowsOf))
+    scenes.value = padScenes(stored)
+    scenes.value.forEach((scene) => scene.voices.forEach(normalizeLanesOf))
   }
 
   return {
@@ -375,10 +422,13 @@ export const useSequencerStore = defineStore('sequencer', () => {
     scenes,
     sceneCount,
     editSceneIndex,
-    playingSceneIndex,
+    parameterSceneIndex,
+    soundingSceneIndex,
+    isAuditioningEditScene,
     copiedScene,
     selectEditScene,
-    setPlayingScene,
+    setParameterScene,
+    toggleAuditionEditScene,
     copyScene,
     pasteScene,
     selectedVoiceIndex,
@@ -401,6 +451,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     restoreLaneValues,
     setLaneWindow,
     setLaneOffset,
+    cycleLaneDirection,
     setOutputRange,
     setVoiceOutputRange,
     toggleLaneLock,

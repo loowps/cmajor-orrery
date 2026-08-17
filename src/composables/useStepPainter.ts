@@ -15,23 +15,44 @@ interface PaintPosition {
   normalized: number
 }
 
+/// Command stands in for control on a Mac, where control-click is the context menu.
+function isLevelling(event: PointerEvent): boolean {
+  return event.ctrlKey || event.metaKey
+}
+
+/// Where a modifier wants the line to end, or nothing at all if the drag is freehand.
+function lineEndFor(
+  event: PointerEvent,
+  anchor: PaintPosition,
+  position: PaintPosition
+): PaintPosition | null {
+  if (isLevelling(event)) {
+    return { slot: position.slot, normalized: anchor.normalized }
+  }
+
+  return event.shiftKey ? position : null
+}
+
 /**
  * Pointer handling lives on the whole lane track rather than on each cell, so a single drag
  * can sweep a curve across many slots. Samples are interpolated between pointer events,
  * because a fast drag reports far fewer positions than the slots it crosses.
  *
- * Holding shift replaces the freehand path with a straight ramp from where the drag began.
+ * Either modifier replaces the freehand path with a line from where the drag began, redrawn
+ * from the values as they were so that the line follows the pointer rather than piling up:
+ * shift takes its far end from the pointer's height, control holds the height the drag started
+ * at, which levels a run of steps without having to hand-draw a flat one.
  */
 export function useStepPainter(options: StepPainterOptions) {
   const isPainting = ref(false)
 
-  /// Where the pointer itself is, rather than each interpolated step it passes through.
+  /// The value being written at the pointer's slot, which under control is not its height.
   const paintPosition = ref<PaintPosition | null>(null)
 
   let anchor: PaintPosition | null = null
   let previous: PaintPosition | null = null
   let valuesBeforePaint: number[] = []
-  let drawingStraightLine = false
+  let drawingLine = false
 
   function positionFrom(event: PointerEvent): PaintPosition {
     const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
@@ -78,7 +99,7 @@ export function useStepPainter(options: StepPainterOptions) {
     anchor = position
     previous = position
     paintPosition.value = position
-    drawingStraightLine = event.shiftKey
+    drawingLine = event.shiftKey || isLevelling(event)
     isPainting.value = true
 
     options.onPaintStart?.()
@@ -91,21 +112,24 @@ export function useStepPainter(options: StepPainterOptions) {
     }
 
     const position = positionFrom(event)
-    paintPosition.value = position
+    const lineEnd = lineEndFor(event, anchor, position)
 
-    if (event.shiftKey) {
-      if (!drawingStraightLine) {
-        drawingStraightLine = true
-      }
+    // The readout belongs to the value, not the pointer, so it rides the line rather than the hand.
+    paintPosition.value = lineEnd ?? position
+
+    if (lineEnd) {
+      drawingLine = true
 
       options.restoreValues(valuesBeforePaint)
-      paintBetween(anchor, position)
+      paintBetween(anchor, lineEnd)
+
+      // Freehand resumes from where the hand actually is, not from the line it was drawing.
       previous = position
       return
     }
 
-    if (drawingStraightLine) {
-      drawingStraightLine = false
+    if (drawingLine) {
+      drawingLine = false
       previous = position
     }
 
@@ -124,7 +148,7 @@ export function useStepPainter(options: StepPainterOptions) {
     paintPosition.value = null
     anchor = null
     previous = null
-    drawingStraightLine = false
+    drawingLine = false
 
     options.onPaintEnd?.()
   }

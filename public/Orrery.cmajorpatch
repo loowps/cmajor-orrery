@@ -3,7 +3,7 @@
     "ID":            "com.loowps.orrery",
     "version":       "1.0",
     "name":          "Orrery",
-    "description":   "Host-synced generative MIDI sequencer: five seeded lanes (step length, pitch, velocity, gate, probability), each with its own range",
+    "description":   "Host-synced polymetric MIDI sequencer: eight voices of five phasing lanes (trigger, hold, gate, pitch, velocity), each with its own window, direction and range, across eight scenes",
     "manufacturer":  "Loowps",
     "category":      "generator",
     "isInstrument":  true,
@@ -12,7 +12,7 @@
 
     "view":          {
                          "src": "main.js",
-                         "width": "1000px",
+                         "width": "1400px",
                          "height": "820px",
                          "resizable": true
                      }
