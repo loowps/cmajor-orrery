@@ -1,0 +1,614 @@
+/**
+    Orrery - a polymetric step sequencer.
+
+    Eight voices, each with five lanes: trigger, hold, gate, pitch and velocity. Every slot is
+    one 16th, and a slot either starts a note, extends the note before it, or is silent:
+
+        trigger >= (1 - density)              -> start a note
+        hold >= (1 - holdAmount), sounding    -> extend that note
+        otherwise                             -> rest
+
+    Density and Hold are thresholds internally, but they are exposed the way round a player
+    expects: turning them up gives more notes and longer notes.
+
+    Step length is therefore emergent rather than stored, and gate is a percentage of whatever
+    length the holds produced. Because the decision is a threshold rather than a coin toss, the
+    pattern is stable - the editor can draw exactly what will play.
+
+    Each lane cycles through a window of its own value array, so a lane of length 5 inside a
+    16-slot pattern phases against one of length 16.
+
+    Trigger and hold decide the rhythm and are read at every slot. Pitch, velocity and gate
+    describe a note and advance once per note, so a five-note pitch lane keeps its order however
+    the rhythm falls, and no value is skipped when the density changes.
+
+    The step data arrives as events rather than parameters - there are far too many values to
+    expose as automatable endpoints. The view owns that data and replays it on load.
+
+    Always host-synced: there is no internal clock.
+*/
+
+processor Orrery [[ main ]]
+{
+    //==============================================================================
+    input event std::timeline::Tempo          tempoIn;
+    input event std::timeline::Position       positionIn;
+    input event std::timeline::TransportState transportIn;
+
+    output event std::midi::Message midiOut;
+
+    /// The slot each voice has just entered, so the editor can follow along.
+    output event Playhead playheadOut;
+
+    //==============================================================================
+    /**
+        The only automatable parameter. A scene holds a whole board - every voice with its lanes
+        and its settings - so the host arranges by switching scenes rather than by automating
+        forty knobs, and nothing else can be fighting a scene for ownership of a value.
+    */
+    input event int32 sceneIn [[ name: "Scene", min: 1, max: 4, init: 1, step: 1 ]];
+
+    input event LaneValues    laneValuesIn;
+    input event LaneSettings  laneSettingsIn;
+    input event StepEdit      stepEditIn;
+    input event VoiceSettings voiceSettingsIn;
+
+    /// A listening aid the editor applies over the scene, not part of any scene. Zero means none.
+    input event int32 soloMaskIn;
+
+    //==============================================================================
+    struct LaneValues
+    {
+        int32 scene;
+        int32 voice;
+        int32 lane;
+        float32[64] values;
+    }
+
+    struct LaneSettings
+    {
+        int32 scene;
+        int32 voice;
+        int32 lane;
+        int32 start;
+        int32 length;
+        int32 offset;
+        float32 low;
+        float32 high;
+    }
+
+    struct StepEdit
+    {
+        int32 scene;
+        int32 voice;
+        int32 lane;
+        int32 index;
+        float32 value;
+    }
+
+    /// What used to arrive as per-voice parameters, now addressed to the scene that owns it.
+    struct VoiceSettings
+    {
+        int32 scene;
+        int32 voice;
+        int32 on;
+        int32 steps;
+        float32 density;
+        float32 hold;
+        int32 cycle;
+    }
+
+    struct Playhead
+    {
+        int32 voice;
+        int32 slot;
+    }
+
+    //==============================================================================
+    let voiceCount = 8;
+    let laneCount  = 5;
+    let maxSteps   = 64;
+    let sceneCount = 4;
+
+    let laneTrigger  = 0;
+    let laneHold     = 1;
+    let laneGate     = 2;
+    let lanePitch    = 3;
+    let laneVelocity = 4;
+
+    /// Every scene holds a full board, so the stores are scene-major and only one is ever played.
+    let totalLanes   = sceneCount * voiceCount * laneCount;
+    let totalValues  = totalLanes * maxSteps;
+    let totalVoices  = sceneCount * voiceCount;
+    let totalSlots   = voiceCount * maxSteps;
+
+    float32[totalValues] stepValues;        // normalised 0..1 positions
+    int32[totalLanes]    windowStart;
+    int32[totalLanes]    windowLength;
+    /// Where inside the window a lane begins reading, so lanes can share values out of phase.
+    int32[totalLanes]    windowOffset;
+    float32[totalLanes]  outputLow;
+    float32[totalLanes]  outputHigh;
+
+    bool[totalSlots]    slotIsTrigger;
+    int32[totalSlots]   slotPitch;
+    int32[totalSlots]   slotVelocity;
+    int32[totalSlots]   slotSpan;
+    float32[totalSlots] slotGate;
+
+    int32[voiceCount]   passNoteStart;
+    int32[voiceCount]   passTriggerCount;
+
+    bool[voiceCount]    voiceEnabled;
+    bool[voiceCount]    notePlaying;
+    int32[voiceCount]   playingNote;
+    float64[voiceCount] noteOffAt;
+
+    /**
+        The settings of the scene being played, mirrored out of the per-scene stores below. Keeping
+        a live copy means the sequencing code never has to know that scenes exist at all - only
+        loadScene and the settings event write here.
+    */
+    int32[voiceCount]   voicePatternLength;
+    float32[voiceCount] voiceTriggerThreshold;
+    float32[voiceCount] voiceHoldThreshold;
+    /// Steps between realignments of every lane, or zero to let them free-run.
+    int32[voiceCount]   voiceResetCycle;
+    bool[voiceCount]    voiceNeedsRebuild;
+
+    bool[totalVoices]    sceneVoiceOn;
+    int32[totalVoices]   sceneVoiceSteps;
+    float32[totalVoices] sceneTriggerThreshold;
+    float32[totalVoices] sceneHoldThreshold;
+    int32[totalVoices]   sceneResetCycle;
+
+    int32 currentScene;
+
+    /// Bit per voice, set by the editor. Zero means nothing is soloed and the scene decides.
+    int32 soloMask;
+
+    /// Absolute step count at the start of the current pass, so lanes can free-run across it.
+    int32[voiceCount]   passStartStep;
+
+    int64[voiceCount]   voiceCurrentPass;
+    int32[voiceCount]   voiceCurrentSlot;
+
+    float64 pos16;
+
+    bool needsRelocate = true;
+    bool hostPlaying, transportSeen;
+    int32 hostTimeout;
+    float32 hostBpm = 120.0f;
+
+    //==============================================================================
+    /// The host counts scenes from one, everything inside here counts from zero.
+    event sceneIn (int32 value)
+    {
+        loadScene (clamp (value, 1, sceneCount) - 1);
+    }
+
+    event soloMaskIn (int32 mask)
+    {
+        soloMask = mask;
+        refreshAudibility();
+    }
+
+    event voiceSettingsIn (VoiceSettings update)
+    {
+        if (! isSceneValid (update.scene) || ! isVoiceValid (update.voice))
+            return;
+
+        let s = wrap<totalVoices> (voiceSlot (update.scene, update.voice));
+
+        sceneVoiceOn[s]          = update.on != 0;
+        sceneVoiceSteps[s]       = clamp (update.steps, 4, maxSteps);
+        sceneTriggerThreshold[s] = 1.0f - update.density;
+        sceneHoldThreshold[s]    = 1.0f - update.hold;
+        sceneResetCycle[s]       = clamp (update.cycle, 0, maxSteps);
+
+        // Editing the scene that is playing has to reach the live copy the sequencer reads.
+        if (update.scene == currentScene)
+            mirrorVoice (update.voice);
+    }
+
+    event laneValuesIn (LaneValues update)
+    {
+        if (! isLaneValid (update.scene, update.voice, update.lane))
+            return;
+
+        let base = laneBase (update.scene, update.voice, update.lane);
+
+        for (int32 i = 0; i < maxSteps; ++i)
+            stepValues[wrap<totalValues> (base + i)] = update.values[wrap<maxSteps> (i)];
+
+        markRebuild (update.scene, update.voice);
+    }
+
+    event laneSettingsIn (LaneSettings update)
+    {
+        if (! isLaneValid (update.scene, update.voice, update.lane))
+            return;
+
+        let lane = wrap<totalLanes> (laneIndex (update.scene, update.voice, update.lane));
+
+        windowLength[lane] = clamp (update.length, 1, maxSteps);
+        windowStart[lane]  = clamp (update.start, 0, maxSteps - windowLength[lane]);
+        windowOffset[lane] = clamp (update.offset, 0, windowLength[lane] - 1);
+        outputLow[lane]    = update.low;
+        outputHigh[lane]   = update.high;
+
+        markRebuild (update.scene, update.voice);
+    }
+
+    event stepEditIn (StepEdit edit)
+    {
+        if (! isLaneValid (edit.scene, edit.voice, edit.lane) || edit.index < 0 || edit.index >= maxSteps)
+            return;
+
+        let base = laneBase (edit.scene, edit.voice, edit.lane);
+        stepValues[wrap<totalValues> (base + edit.index)] = edit.value;
+
+        markRebuild (edit.scene, edit.voice);
+    }
+
+    //==============================================================================
+    event tempoIn (std::timeline::Tempo t)
+    {
+        if (t.bpm > 1.0f)
+            hostBpm = t.bpm;
+
+        markHostAlive();
+    }
+
+    event transportIn (std::timeline::TransportState t)
+    {
+        transportSeen = true;
+        hostPlaying = t.isPlaying();
+        markHostAlive();
+
+        if (! hostPlaying)
+        {
+            allNotesOff();
+            needsRelocate = true;
+        }
+    }
+
+    event positionIn (std::timeline::Position p)
+    {
+        markHostAlive();
+
+        let newPos = p.quarterNote * 4.0;
+
+        if (abs (newPos - pos16) > 0.25)
+            needsRelocate = true;
+
+        pos16 = newPos;
+    }
+
+    //==============================================================================
+    bool isSceneValid (int32 scene) { return scene >= 0 && scene < sceneCount; }
+    bool isVoiceValid (int32 voice) { return voice >= 0 && voice < voiceCount; }
+
+    bool isLaneValid (int32 scene, int32 voice, int32 lane)
+    {
+        return isSceneValid (scene) && isVoiceValid (voice) && lane >= 0 && lane < laneCount;
+    }
+
+    int32 voiceSlot (int32 scene, int32 voice)
+    {
+        return scene * voiceCount + voice;
+    }
+
+    int32 laneIndex (int32 scene, int32 voice, int32 lane)
+    {
+        return voiceSlot (scene, voice) * laneCount + lane;
+    }
+
+    int32 laneBase (int32 scene, int32 voice, int32 lane)
+    {
+        return laneIndex (scene, voice, lane) * maxSteps;
+    }
+
+    /// Only the scene being played has anything to rebuild; the others are rebuilt when loaded.
+    void markRebuild (int32 scene, int32 voice)
+    {
+        if (scene == currentScene)
+            voiceNeedsRebuild[wrap<voiceCount> (voice)] = true;
+    }
+
+    bool audibleInCurrentScene (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        if (soloMask != 0)
+            return (soloMask & (1 << v)) != 0;
+
+        return sceneVoiceOn[wrap<totalVoices> (voiceSlot (currentScene, voice))];
+    }
+
+    /// Copies one voice out of the playing scene into the live arrays the sequencer reads.
+    void mirrorVoice (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+        let s = wrap<totalVoices> (voiceSlot (currentScene, voice));
+
+        voicePatternLength[v]    = sceneVoiceSteps[s];
+        voiceTriggerThreshold[v] = sceneTriggerThreshold[s];
+        voiceHoldThreshold[v]    = sceneHoldThreshold[s];
+        voiceResetCycle[v]       = sceneResetCycle[s];
+        voiceEnabled[v]          = audibleInCurrentScene (voice);
+        voiceNeedsRebuild[v]     = true;
+
+        if (! voiceEnabled[v])
+            sendNoteOff (voice);
+    }
+
+    void refreshAudibility()
+    {
+        for (int32 voice = 0; voice < voiceCount; ++voice)
+        {
+            let v = wrap<voiceCount> (voice);
+            voiceEnabled[v] = audibleInCurrentScene (voice);
+
+            if (! voiceEnabled[v])
+                sendNoteOff (voice);
+        }
+    }
+
+    /**
+        Switching scene swaps the whole board. Pass positions are deliberately left alone, so a
+        scene change lands wherever the music already is rather than restarting every voice.
+    */
+    void loadScene (int32 scene)
+    {
+        if (! isSceneValid (scene))
+            return;
+
+        currentScene = scene;
+
+        for (int32 voice = 0; voice < voiceCount; ++voice)
+            mirrorVoice (voice);
+    }
+
+    void markHostAlive() { hostTimeout = int32 (processor.frequency * 0.25); }
+    bool hostAlive()     { return hostTimeout > 0; }
+    bool isRunning()     { return transportSeen ? hostPlaying : hostAlive(); }
+
+    float64 framesPer16th() { return (15.0 / float64 (max (hostBpm, 1.0f))) * processor.frequency; }
+
+    /**
+        Mirrors the editor: a lane cycles through the window its start and length describe, and
+        the stored position is mapped onto the output range only at the point of use - so moving
+        the range while the sequence runs rescales it instead of overwriting anything.
+    */
+    float32 laneOutput (int32 voice, int32 lane, int32 readIndex)
+    {
+        let here = wrap<totalLanes> (laneIndex (currentScene, voice, lane));
+        let length = max (windowLength[here], 1);
+        let index = windowStart[here] + ((readIndex + windowOffset[here]) % length);
+        let base = laneBase (currentScene, voice, lane);
+        let normalised = stepValues[wrap<totalValues> (base + index)];
+
+        return outputLow[here] + normalised * (outputHigh[here] - outputLow[here]);
+    }
+
+    //==============================================================================
+    /**
+        Resolves one pass of a voice's pattern. A hold can only be recognised after the note it
+        extends has already been placed, so each hold reaches back and lengthens the trigger
+        that owns it.
+    */
+    void buildVoice (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        int32 noteIndex = passNoteStart[v];
+        int32 triggerSlot = -1;
+        int32 triggers = 0;
+
+        // Zero means the lanes never realign and each free-runs at its own length.
+        let cycle = voiceResetCycle[v];
+
+        for (int32 slot = 0; slot < voicePatternLength[v]; ++slot)
+        {
+            let here = wrap<totalSlots> (voice * maxSteps + slot);
+
+            int32 position = passStartStep[v] + slot;
+
+            if (cycle > 0)
+            {
+                position = position % cycle;
+
+                if (position == 0)
+                    noteIndex = 0;
+            }
+
+            slotIsTrigger[here] = false;
+
+            if (laneOutput (voice, laneTrigger, position) >= voiceTriggerThreshold[v])
+            {
+                slotIsTrigger[here] = true;
+                slotPitch[here]     = clamp (int32 (laneOutput (voice, lanePitch, noteIndex)), 0, 127);
+                slotVelocity[here]  = clamp (int32 (laneOutput (voice, laneVelocity, noteIndex)), 1, 127);
+                slotGate[here]      = laneOutput (voice, laneGate, noteIndex);
+                slotSpan[here]      = 1;
+
+                triggerSlot = slot;
+                ++noteIndex;
+                ++triggers;
+            }
+            else if (triggerSlot >= 0 && laneOutput (voice, laneHold, position) >= voiceHoldThreshold[v])
+            {
+                ++slotSpan[wrap<totalSlots> (voice * maxSteps + triggerSlot)];
+            }
+            else
+            {
+                triggerSlot = -1;
+            }
+        }
+
+        passTriggerCount[v] = triggers;
+        voiceNeedsRebuild[v] = false;
+    }
+
+    void startPass (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        if (voiceResetCycle[v] > 0)
+        {
+            passNoteStart[v] = 0;
+            passStartStep[v] = 0;
+        }
+        else
+        {
+            passNoteStart[v] += passTriggerCount[v];
+            passStartStep[v] += voicePatternLength[v];
+        }
+
+        buildVoice (voice);
+    }
+
+    //==============================================================================
+    void sendNoteOff (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        if (notePlaying[v])
+        {
+            midiOut <- std::midi::createMessage (0x80 + voice, playingNote[v], 0);
+            notePlaying[v] = false;
+        }
+    }
+
+    void allNotesOff()
+    {
+        for (int32 voice = 0; voice < voiceCount; ++voice)
+            sendNoteOff (voice);
+    }
+
+    void enterSlot (int32 voice, int32 slot)
+    {
+        let v = wrap<voiceCount> (voice);
+        let here = wrap<totalSlots> (voice * maxSteps + slot);
+
+        if (! voiceEnabled[v] || ! slotIsTrigger[here])
+            return;
+
+        // Monophonic per voice, so a long gate ties into the next note rather than stacking.
+        sendNoteOff (voice);
+
+        playingNote[v] = slotPitch[here];
+        midiOut <- std::midi::createMessage (0x90 + voice, playingNote[v], slotVelocity[here]);
+        notePlaying[v] = true;
+
+        let gateFraction = float64 (clamp (slotGate[here], 1.0f, 100.0f)) * 0.01;
+        noteOffAt[v] = pos16 + float64 (slotSpan[here]) * gateFraction;
+    }
+
+    /// Only the first voice of each scene starts enabled - eight at once is unusable as an
+    /// opening position, and the editor overwrites all of this as soon as it connects.
+    void initialiseVoices()
+    {
+        for (int32 scene = 0; scene < sceneCount; ++scene)
+        {
+            for (int32 voice = 0; voice < voiceCount; ++voice)
+            {
+                let s = wrap<totalVoices> (voiceSlot (scene, voice));
+
+                sceneVoiceOn[s]          = voice == 0;
+                sceneVoiceSteps[s]       = 16;
+                sceneTriggerThreshold[s] = 0.42f;
+                sceneHoldThreshold[s]    = 0.5f;
+                sceneResetCycle[s]       = 16;
+            }
+        }
+
+        for (int32 voice = 0; voice < voiceCount; ++voice)
+        {
+            let v = wrap<voiceCount> (voice);
+
+            voiceCurrentPass[v] = -1;
+            voiceCurrentSlot[v] = -1;
+        }
+
+        loadScene (0);
+    }
+
+    //==============================================================================
+    /// Each voice runs its own loop over the shared timeline, so a 12-step voice and a 16-step
+    /// voice drift against each other instead of being forced onto one bar length.
+    void advanceVoice (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+        let patternSpan = float64 (voicePatternLength[v]);
+        let pass = int64 (floor (pos16 / patternSpan));
+        let loopPos = pos16 - float64 (pass) * patternSpan;
+        let slot = clamp (int32 (floor (loopPos)), 0, voicePatternLength[v] - 1);
+
+        if (pass != voiceCurrentPass[v])
+        {
+            if (voiceCurrentPass[v] >= 0)
+                startPass (voice);
+
+            voiceCurrentPass[v] = pass;
+            voiceCurrentSlot[v] = -1;
+        }
+
+        if (voiceNeedsRebuild[v])
+            buildVoice (voice);
+
+        if (needsRelocate)
+        {
+            voiceCurrentSlot[v] = slot;
+            playheadOut <- Playhead (voice, slot);
+
+            // Dropping in at the very top of a slot should still play it, so that starting the
+            // transport on the downbeat doesn't swallow the first note.
+            if (loopPos - float64 (slot) < 0.05)
+                enterSlot (voice, slot);
+        }
+        else if (slot != voiceCurrentSlot[v])
+        {
+            voiceCurrentSlot[v] = slot;
+            enterSlot (voice, slot);
+            playheadOut <- Playhead (voice, slot);
+        }
+    }
+
+    void main()
+    {
+        initialiseVoices();
+
+        loop
+        {
+            if (hostTimeout > 0)
+                --hostTimeout;
+
+            if (isRunning())
+            {
+                if (needsRelocate)
+                    allNotesOff();
+
+                for (int32 voice = 0; voice < voiceCount; ++voice)
+                    advanceVoice (voice);
+
+                needsRelocate = false;
+                pos16 += 1.0 / framesPer16th();
+            }
+            else
+            {
+                for (int32 voice = 0; voice < voiceCount; ++voice)
+                    if (voiceNeedsRebuild[wrap<voiceCount> (voice)])
+                        buildVoice (voice);
+            }
+
+            for (int32 voice = 0; voice < voiceCount; ++voice)
+                if (notePlaying[wrap<voiceCount> (voice)] && pos16 >= noteOffAt[wrap<voiceCount> (voice)])
+                    sendNoteOff (voice);
+
+            advance();
+        }
+    }
+}
+

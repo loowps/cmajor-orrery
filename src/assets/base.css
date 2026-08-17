@@ -1,0 +1,93 @@
+:root {
+  --bg-app: #1b1e23;
+  --bg-panel: #23272e;
+  --bg-sunken: #171a1e;
+  /* Ordered by lightness: everything inert stays below every active tone, so an out-of-window
+     bar can never be mistaken for an in-window cell background. */
+  --bg-cell-inert: #16191d;
+  --bar-inert: #1f242a;
+  --bg-cell: #2b3138;
+  --bg-cell-beat: #333a43;
+  --bar-idle: #59616b;
+  --bg-control: #2c323a;
+  --bg-control-hover: #353c45;
+
+  --border: #363d46;
+  --border-strong: #49515c;
+  /* Parts the bands of one flat surface. Sits just below the track wells, so it reads as a groove
+     rather than as the bright line that separates the header from the instrument. */
+  --seam: #15171b;
+
+  --text: #e7eaee;
+  --text-dim: #98a1ac;
+  --text-faint: #6a7380;
+
+  /* Brass carries everything the patch is doing, so the playhead and thresholds answer it from
+     the opposite side of the wheel: gold against blue stays separable for colour-blind eyes in a
+     way two warm tones would not. */
+  --accent: #d9a441;
+  --accent-bright: #ecbc62;
+  --accent-dim: #8a6420;
+  /* Warm brown rather than black: at the sizes this sits on brass, true black reads as stamped
+     on rather than printed, and white washes out entirely. */
+  --accent-ink: #4a3812;
+
+  --marker: #6cb0ee;
+  --marker-ink: #0d1b26;
+
+  /* Derived so a palette change carries into the washes instead of leaving them behind. */
+  --accent-glow: color-mix(in srgb, var(--accent) 18%, transparent);
+  --marker-wash: color-mix(in srgb, var(--marker) 16%, transparent);
+
+  --radius: 4px;
+  --radius-lg: 8px;
+
+  /* Every gap and inset in the UI comes from this scale, so the whole plugin keeps one rhythm.
+     Steps are 2px apart while they are small enough for the step grid to care, then widen. */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 16px;
+  --space-8: 24px;
+
+  /* Named for what they space rather than how much, so a surface stays consistent with its kind.
+     The bands run edge to edge, so their horizontal inset is the lane inset: one left edge for
+     the logo, the voice controls, the lane labels and the voices table alike. */
+  --control-inset: var(--space-2) var(--space-4);
+  /* Square controls - scene slots, voice buttons, icon buttons - all share one size. */
+  --control-size: 26px;
+  --band-inset: var(--space-5);
+
+  /* The voices table is the widest thing in the plugin: ten fixed columns plus their gaps. Below
+     this the bands would start overlapping, so the whole layout scrolls instead of squashing -
+     the same bargain the lanes make vertically with --lane-min-height. */
+  --view-min-width: 940px;
+
+  --lane-header-width: 160px;
+  --lane-gutter: var(--space-6);
+  --lane-inset: var(--space-3) var(--band-inset);
+  --lane-min-height: 82px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  background: var(--bg-app);
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
