@@ -1,16 +1,40 @@
 <script setup lang="ts">
-export type ActionIconName = 'power' | 'pencil' | 'lock' | 'reset' | 'dice' | 'copy' | 'paste'
+export type ActionIconName =
+  | 'power'
+  | 'pencil'
+  | 'lock'
+  | 'reset'
+  | 'dice'
+  | 'copy'
+  | 'paste'
+  | 'forward'
+  | 'reverse'
+  | 'pendulum'
+  | 'speaker'
 
-const { active = false, compact = false } = defineProps<{
+/// The marker tone is for listening aids - what the editor is hearing, rather than anything the
+/// pattern owns - and matches the colour solo carries in the voices table.
+export type ActionIconTone = 'accent' | 'marker'
+
+const {
+  active = false,
+  compact = false,
+  tone = 'accent'
+} = defineProps<{
   name: ActionIconName
   active?: boolean
   compact?: boolean
+  tone?: ActionIconTone
   title?: string
 }>()
 </script>
 
 <template>
-  <button class="action-icon" :class="{ active, compact }" :title="title">
+  <button
+    class="action-icon"
+    :class="{ active, compact, marker: tone === 'marker' }"
+    :title="title"
+  >
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <template v-if="name === 'power'">
         <path
@@ -73,6 +97,50 @@ const { active = false, compact = false } = defineProps<{
           stroke-width="1.4"
         />
         <rect x="2.4" y="5.6" width="8" height="8" rx="1.6" fill="currentColor" />
+      </template>
+
+      <template v-else-if="name === 'forward'">
+        <path
+          d="M3.4 8h8.4M8.6 4.8 11.8 8l-3.2 3.2"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </template>
+
+      <template v-else-if="name === 'reverse'">
+        <path
+          d="M12.6 8H4.2M7.4 4.8 4.2 8l3.2 3.2"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </template>
+
+      <template v-else-if="name === 'pendulum'">
+        <path
+          d="M3.6 8h8.8M6 5.4 3.4 8 6 10.6M10 5.4 12.6 8 10 10.6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </template>
+
+      <template v-else-if="name === 'speaker'">
+        <path d="M2.6 6.2h2.2L8.2 3.4v9.2L4.8 9.8H2.6z" fill="currentColor" />
+        <path
+          d="M10.4 6.4a2.4 2.4 0 0 1 0 3.2M12.1 4.7a4.6 4.6 0 0 1 0 6.6"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.4"
+          stroke-linecap="round"
+        />
       </template>
 
       <template v-else-if="name === 'paste'">
@@ -162,6 +230,12 @@ const { active = false, compact = false } = defineProps<{
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-ink);
+  }
+
+  &.marker.active {
+    background: var(--marker);
+    border-color: var(--marker);
+    color: var(--marker-ink);
   }
 }
 </style>

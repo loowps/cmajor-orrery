@@ -34,13 +34,16 @@ percentage of whatever length they produced.
 
 ## Lanes
 
-Each lane owns 64 values and three ways of reading them:
+Each lane owns 64 values and four ways of reading them:
 
 - **Window** — the start and length of the slice it cycles through. Sliding it re-uses drawn
   material in a different order, which finds something faster than redrawing it.
 - **Phase** — where inside the window it begins, dragged as a line through the step grid. The window
   chooses the material, the phase chooses the entry point, so two lanes can share values and still
   answer each other.
+- **Direction** — forward, reverse, or pendulum. The phase stays the cell the lane reads first
+  whichever way it travels, and a pendulum takes almost twice as long to come round, so turning one
+  lane around re-times it against the others without redrawing anything.
 - **Output range** — mapped as the note is produced, so narrowing it squeezes a running sequence
   instead of flattening it.
 
@@ -49,10 +52,15 @@ window — **Reset every**, or `Off` to let each lane free-run at its own length
 
 ## Scenes
 
-Four scenes, each holding a whole board. The scene being edited and the scene being played are
+Eight scenes, each holding a whole board. The scene being edited and the scene being played are
 separate choices: the topbar selector picks what you edit, while the **Scene** parameter picks what
-sounds. It is the patch's only automatable parameter, and the patch holds all four scenes itself, so
-a host can arrange by automating scenes with the editor closed.
+sounds. It is the patch's only automatable parameter, and the patch holds every scene itself, so a
+host can arrange by automating scenes with the editor closed.
+
+The editor never writes that parameter — selecting a scene to edit is silent, so it can't overwrite
+an arrangement or land in a recorded automation pass. The speaker beside the slots points playback
+at whatever is being edited for as long as it is on, and hands it straight back when it is switched
+off; the slot lights show what is sounding, with the parameter's own choice half lit underneath.
 
 ## Building
 
