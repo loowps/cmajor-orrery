@@ -1,0 +1,9 @@
+@import './base.css';
+
+button {
+  font-family: inherit;
+}
+
+input {
+  font-family: inherit;
+}
