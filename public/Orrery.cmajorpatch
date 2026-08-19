@@ -3,7 +3,7 @@
     "ID":            "com.loowps.orrery",
     "version":       "1.0",
     "name":          "Orrery",
-    "description":   "Host-synced polymetric MIDI sequencer: eight voices of five phasing lanes (trigger, hold, gate, pitch, velocity), each with its own window, direction and range, across eight scenes",
+    "description":   "Host-synced polymetric MIDI sequencer: eight voices of eight phasing lanes (trigger, hold, rate, nudge, ratchet, gate, pitch, velocity), each with its own window, direction and range, across eight scenes",
     "manufacturer":  "Loowps",
     "category":      "generator",
     "isInstrument":  true,

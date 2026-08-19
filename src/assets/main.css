@@ -7,3 +7,12 @@ button {
 input {
   font-family: inherit;
 }
+
+/**
+ * One focus ring for every control that can take focus, not just the ones that remembered to ask.
+ * Kept as an outline so it is drawn outside the control and cannot shift anything around it.
+ */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}

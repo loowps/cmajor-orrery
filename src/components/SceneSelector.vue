@@ -72,7 +72,7 @@ const {
 }
 
 .label {
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   letter-spacing: 0.02em;
   color: var(--text-dim);
 }
@@ -102,14 +102,14 @@ const {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    border-color 90ms ease,
-    color 90ms ease;
+    background-color var(--dur-control),
+    border-color var(--dur-control),
+    color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);

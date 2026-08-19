@@ -2,7 +2,25 @@ export const maxSteps = 64
 export const minPatternLength = 4
 export const sceneCount = 8
 
-export type LaneId = 'trigger' | 'hold' | 'pitch' | 'velocity' | 'gate'
+export type LaneId =
+  | 'trigger'
+  | 'hold'
+  | 'rate'
+  | 'nudge'
+  | 'ratchet'
+  | 'pitch'
+  | 'velocity'
+  | 'gate'
+
+/**
+ * How far off its slot a note may be pushed, as a percentage of a 16th. Half a step either way is
+ * the most the sequencer will take: at exactly half, a note pushed late can reach its neighbour's
+ * moment but never overtake it, so the order a pattern is drawn in is the order it is heard in.
+ */
+export const maxNudgePercent = 50
+
+/// How many times a note may be struck inside its own length.
+export const maxRatchetHits = 8
 
 export type SlotState = 'trigger' | 'hold' | 'rest'
 
@@ -109,6 +127,16 @@ export interface ResolvedNote {
   pitch: number
   velocity: number
   gate: number
+  /// How far off its slot the note sounds, as a percentage of a 16th.
+  nudge: number
+  /// How many times it is struck inside its own length. One is a plain note.
+  ratchet: number
+  /**
+   * The share of passes the note sounds on. Which passes those are depends on how far the voice
+   * has turned, so the editor resolves the pattern rather than any one pass of it: a note below
+   * a hundred is shown as one that comes and goes.
+   */
+  rate: number
 }
 
 export interface ResolvedPattern {
@@ -146,6 +174,48 @@ export const laneDefinitions: LaneDefinition[] = [
     defaultValue: 0,
     defaultOutputMin: 0,
     defaultOutputMax: 1
+  },
+  {
+    id: 'rate',
+    label: 'Rate',
+    min: 0,
+    max: 100,
+    step: 1,
+    unit: '%',
+    usesThreshold: false,
+    advance: 'slot',
+    defaultLength: 16,
+    defaultValue: 1,
+    defaultOutputMin: 0,
+    defaultOutputMax: 100
+  },
+  {
+    id: 'nudge',
+    label: 'Nudge',
+    min: -maxNudgePercent,
+    max: maxNudgePercent,
+    step: 1,
+    unit: '%',
+    usesThreshold: false,
+    advance: 'slot',
+    defaultLength: 16,
+    defaultValue: 0.5,
+    defaultOutputMin: -maxNudgePercent,
+    defaultOutputMax: maxNudgePercent
+  },
+  {
+    id: 'ratchet',
+    label: 'Ratchet',
+    min: 1,
+    max: maxRatchetHits,
+    step: 1,
+    unit: '×',
+    usesThreshold: false,
+    advance: 'note',
+    defaultLength: 16,
+    defaultValue: 0,
+    defaultOutputMin: 1,
+    defaultOutputMax: 4
   },
   {
     id: 'gate',
@@ -209,14 +279,16 @@ export interface Scene {
   voices: Voice[]
 }
 
-export const snapshotVersion = 11
+export const snapshotVersion = 14
 
 /**
  * Nothing a later build added is required to read an earlier pattern: lane direction arrived in
- * 10 and defaults to forward, and 11 widened the board from four scenes to eight, which is a
- * longer list rather than a different one. Both still load as what they were.
+ * 10 and defaults to forward, 11 widened the board from four scenes to eight, and 12 to 14 added
+ * the nudge, ratchet and rate lanes, whose inert values are the grid, the single strike and the
+ * every-pass a pattern was already playing. Each is a longer record rather than a different one,
+ * so every version still loads as what it was.
  */
-export const loadableSnapshotVersions = [9, 10, snapshotVersion]
+export const loadableSnapshotVersions = [9, 10, 11, 12, 13, snapshotVersion]
 
 export interface PatternSnapshot {
   version: number

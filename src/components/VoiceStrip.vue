@@ -49,7 +49,7 @@ const voiceSummaries = computed(() =>
 .caption {
   flex: none;
   margin-right: var(--space-2);
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   letter-spacing: 0.02em;
   color: var(--text-dim);
 }
@@ -67,13 +67,13 @@ const voiceSummaries = computed(() =>
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: 0.7rem;
+  font-size: var(--text-label);
   /* Hugs the glyphs, so centring the line box centres what you actually see. */
   line-height: 1;
   cursor: pointer;
   transition:
-    border-color 90ms ease,
-    background-color 90ms ease;
+    border-color var(--dur-control),
+    background-color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);

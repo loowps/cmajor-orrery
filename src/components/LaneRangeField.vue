@@ -195,7 +195,7 @@ const typedHigh = computed({
   position: relative;
   height: 6px;
   background: var(--bg-sunken);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   touch-action: none;
   user-select: none;
 
@@ -210,9 +210,9 @@ const typedHigh = computed({
   bottom: 0;
   min-width: 2px;
   background: var(--accent-dim);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   cursor: grab;
-  transition: background-color 90ms ease;
+  transition: background-color var(--dur-control);
 
   &:hover {
     background: var(--accent);

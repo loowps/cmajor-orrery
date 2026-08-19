@@ -190,9 +190,9 @@ const {
   color: var(--text-faint);
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    border-color 90ms ease,
-    color 90ms ease;
+    background-color var(--dur-control),
+    border-color var(--dur-control),
+    color var(--dur-control);
 
   svg {
     width: 13px;
@@ -200,8 +200,8 @@ const {
   }
 
   &.compact {
-    width: 19px;
-    height: 19px;
+    width: var(--control-size-compact);
+    height: var(--control-size-compact);
 
     svg {
       width: 12px;

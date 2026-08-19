@@ -1,8 +1,9 @@
 /**
     Orrery - a polymetric step sequencer.
 
-    Eight voices, each with five lanes: trigger, hold, gate, pitch and velocity. Every slot is
-    one 16th, and a slot either starts a note, extends the note before it, or is silent:
+    Eight voices, each with eight lanes: trigger, hold, rate, nudge, ratchet, gate, pitch and
+    velocity. Every slot is one 16th, and a slot either starts a note, extends the note before it,
+    or is silent:
 
         trigger >= (1 - density)              -> start a note
         hold >= (1 - holdAmount), sounding    -> extend that note
@@ -19,9 +20,26 @@
     16-slot pattern phases against one of length 16. A lane can walk that window forwards,
     backwards or as a pendulum, which changes its effective period without redrawing anything.
 
-    Trigger and hold decide the rhythm and are read at every slot. Pitch, velocity and gate
-    describe a note and advance once per note, so a five-note pitch lane keeps its order however
-    the rhythm falls, and no value is skipped when the density changes.
+    Trigger, hold, rate and nudge decide the rhythm and are read at every slot. Ratchet, pitch,
+    velocity and gate describe a note and advance once per note, so a five-note pitch lane keeps
+    its order however the rhythm falls, and no value is skipped when the density changes.
+
+    Rate is how often a step comes round, counted in passes rather than thrown as dice: a half
+    plays every other pass, a third every third, spread as evenly as the fraction allows. It only
+    silences a note - the note keeps its slot, its span and its turn at the per-note lanes - so
+    what the rest of the pattern plays never depends on which passes this one takes. The pass is
+    counted from the transport position, so the same bar always sounds the same way.
+
+    Ratchet divides a note's length rather than adding to it: the strikes share the space one note
+    would have taken instead of running past it, so a pattern keeps its shape however hard it is
+    struck. The strikes still owed are held on the voice rather than in the pass that placed them -
+    they outlive the slot data they came from, and the next note cuts them short exactly as a
+    monophonic voice cuts anything it interrupts.
+
+    Nudge takes a note off the grid by up to half a 16th either way, so a slot is a moment in time
+    rather than an edge to be crossed. Half a step is the limit because at exactly half a note can
+    reach its neighbour's moment but never overtake it - so one pointer walking the pass in order
+    is all the scheduling a voice needs, and a pass is resolved half a step before it begins.
 
     The step data arrives as events rather than parameters - there are far too many values to
     expose as automatable endpoints. The view owns that data and replays it on load.
@@ -116,7 +134,7 @@ processor Orrery [[ main ]]
 
     //==============================================================================
     let voiceCount = 8;
-    let laneCount  = 5;
+    let laneCount  = 8;
     let maxSteps   = 64;
     let sceneCount = 8;
 
@@ -126,9 +144,18 @@ processor Orrery [[ main ]]
 
     let laneTrigger  = 0;
     let laneHold     = 1;
-    let laneGate     = 2;
-    let lanePitch    = 3;
-    let laneVelocity = 4;
+    let laneRate     = 2;
+    let laneNudge    = 3;
+    let laneRatchet  = 4;
+    let laneGate     = 5;
+    let lanePitch    = 6;
+    let laneVelocity = 7;
+
+    /// Half a step either way. At exactly half, a note pushed late can reach the moment of the
+    /// one after it but never overtake it, so a pass always sounds in the order it was drawn.
+    let maxNudgeSteps = 0.5;
+
+    let maxRatchetHits = 8;
 
     /// Every scene holds a full board, so the stores are scene-major and only one is ever played.
     let totalLanes   = sceneCount * voiceCount * laneCount;
@@ -151,6 +178,13 @@ processor Orrery [[ main ]]
     int32[totalSlots]   slotVelocity;
     int32[totalSlots]   slotSpan;
     float32[totalSlots] slotGate;
+    /// How far off its slot a note sounds, in 16ths. Zero everywhere a note does not start.
+    float64[totalSlots] slotNudge;
+    /// How many times a note is struck inside its own length. One everywhere else.
+    int32[totalSlots]   slotRatchet;
+    /// Whether the note starting here is one of the passes it takes. Structure is decided once;
+    /// this is the only thing about a slot that answers differently from one pass to the next.
+    bool[totalSlots]    slotSounds;
 
     int32[voiceCount]   passNoteStart;
     int32[voiceCount]   passTriggerCount;
@@ -159,6 +193,19 @@ processor Orrery [[ main ]]
     bool[voiceCount]    notePlaying;
     int32[voiceCount]   playingNote;
     float64[voiceCount] noteOffAt;
+
+    /**
+        A ratchet belongs to the note that is sounding rather than to the pass that placed it, so
+        the strikes still to come are held on the voice. That way they outlive the slot data they
+        came from, and the next note simply cuts them short - which is what a monophonic voice
+        does to anything it interrupts.
+    */
+    int32[voiceCount]   strikesLeft;
+    float64[voiceCount] strikeInterval;
+    float64[voiceCount] strikeNextAt;
+    int32[voiceCount]   strikeNote;
+    int32[voiceCount]   strikeVelocity;
+    float64[voiceCount] strikeGate;
 
     /**
         The settings of the scene being played, mirrored out of the per-scene stores below. Keeping
@@ -194,7 +241,16 @@ processor Orrery [[ main ]]
     int32[voiceCount]   passStartStep;
 
     int64[voiceCount]   voiceCurrentPass;
+    /// Where the playhead is, which is the slot the voice is metrically in rather than the note
+    /// it last sounded - nudged notes come off the grid, the playhead does not.
     int32[voiceCount]   voiceCurrentSlot;
+
+    /// Position of the current pass's first slot, so a slot's moment is a time rather than an
+    /// edge to be crossed.
+    float64[voiceCount] voicePassStart;
+
+    /// The next slot of the pass owed a hearing. Everything before it has already had its moment.
+    int32[voiceCount]   voiceNextSlot;
 
     float64 pos16;
 
@@ -469,6 +525,24 @@ processor Orrery [[ main ]]
 
     //==============================================================================
     /**
+        Whether a step drawn at this rate takes this pass. Not a coin toss: the passes a step takes
+        are spread as evenly as its fraction allows, so a half plays every other pass and a third
+        every third one - another wheel turning at its own ratio rather than a die being thrown.
+
+        The pass is counted from the transport position, so the same bar always sounds the same way
+        however the host arrived at it.
+    */
+    bool ratePermits (float64 rate, int64 pass)
+    {
+        if (rate >= 1.0)  return true;
+        if (rate <= 0.0)  return false;
+
+        let turned = float64 (pass);
+
+        return floor ((turned + 1.0) * rate) > floor (turned * rate);
+    }
+
+    /**
         Resolves one pass of a voice's pattern. A hold can only be recognised after the note it
         extends has already been placed, so each hold reaches back and lengthens the trigger
         that owns it.
@@ -499,6 +573,9 @@ processor Orrery [[ main ]]
             }
 
             slotIsTrigger[here] = false;
+            slotSounds[here]    = false;
+            slotNudge[here]     = 0;
+            slotRatchet[here]   = 1;
 
             if (laneOutput (voice, laneTrigger, position) >= voiceTriggerThreshold[v])
             {
@@ -507,6 +584,22 @@ processor Orrery [[ main ]]
                 slotVelocity[here]  = clamp (int32 (laneOutput (voice, laneVelocity, noteIndex)), 1, 127);
                 slotGate[here]      = laneOutput (voice, laneGate, noteIndex);
                 slotSpan[here]      = 1;
+
+                // Drawn as a percentage of a 16th, and read at the slot rather than per note, so
+                // a short nudge lane is a groove the rhythm falls through.
+                slotNudge[here] = clamp (float64 (laneOutput (voice, laneNudge, position)) * 0.01,
+                                         -maxNudgeSteps, maxNudgeSteps);
+
+                // Read per note, like gate and velocity, because it describes a note rather than
+                // the rhythm the note landed in.
+                slotRatchet[here] = clamp (int32 (laneOutput (voice, laneRatchet, noteIndex)),
+                                           1, maxRatchetHits);
+
+                // Rate silences a note without unplacing it: the note keeps its slot, its span and
+                // its turn at the per-note lanes, so what the rest of the pattern plays does not
+                // depend on which passes this one takes.
+                slotSounds[here] = ratePermits (float64 (laneOutput (voice, laneRate, position)) * 0.01,
+                                                voiceCurrentPass[v]);
 
                 triggerSlot = slot;
                 ++noteIndex;
@@ -526,7 +619,9 @@ processor Orrery [[ main ]]
         voiceNeedsRebuild[v] = false;
     }
 
-    void startPass (int32 voice)
+    /// Carried over the pass boundary before the next pass is resolved, because where the lanes
+    /// have got to is what the resolving reads.
+    void advancePassCounters (int32 voice)
     {
         let v = wrap<voiceCount> (voice);
 
@@ -540,8 +635,6 @@ processor Orrery [[ main ]]
             passNoteStart[v] += passTriggerCount[v];
             passStartStep[v] += voicePatternLength[v];
         }
-
-        buildVoice (voice);
     }
 
     //==============================================================================
@@ -556,29 +649,112 @@ processor Orrery [[ main ]]
         }
     }
 
+    /// A note-off ends what is sounding; this ends what was still going to sound.
+    void cancelStrikes (int32 voice)
+    {
+        strikesLeft[wrap<voiceCount> (voice)] = 0;
+    }
+
     void allNotesOff()
     {
         for (int32 voice = 0; voice < voiceCount; ++voice)
+        {
+            cancelStrikes (voice);
             sendNoteOff (voice);
+        }
     }
 
-    void enterSlot (int32 voice, int32 slot)
+    /// One strike of a note. A plain note is the same thing with nothing left to follow it.
+    void strike (int32 voice, int32 note, int32 velocity, float64 at, float64 length)
     {
         let v = wrap<voiceCount> (voice);
-        let here = wrap<totalSlots> (voice * maxSteps + slot);
-
-        if (! voiceEnabled[v] || ! slotIsTrigger[here])
-            return;
 
         // Monophonic per voice, so a long gate ties into the next note rather than stacking.
         sendNoteOff (voice);
 
-        playingNote[v] = slotPitch[here];
-        midiOut <- std::midi::createMessage (0x90 + voice, playingNote[v], slotVelocity[here]);
+        playingNote[v] = note;
+        midiOut <- std::midi::createMessage (0x90 + voice, note, velocity);
         notePlaying[v] = true;
+        noteOffAt[v] = at + length;
+    }
 
+    /// The strikes a ratchet still owes, laid inside the note's own length so that a roll never
+    /// spills into the note after it.
+    void soundDueStrikes (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        if (! voiceEnabled[v])
+            cancelStrikes (voice);
+
+        while (strikesLeft[v] > 0 && strikeNextAt[v] <= pos16)
+        {
+            strike (voice, strikeNote[v], strikeVelocity[v], strikeNextAt[v],
+                    strikeInterval[v] * strikeGate[v]);
+
+            strikeNextAt[v] += strikeInterval[v];
+            --strikesLeft[v];
+        }
+    }
+
+    /// When a slot's note is due, which is its place in the pass plus wherever the nudge lane
+    /// has pushed it.
+    float64 onsetOf (int32 voice, int32 slot)
+    {
+        let v = wrap<voiceCount> (voice);
+        let here = wrap<totalSlots> (voice * maxSteps + slot);
+
+        return voicePassStart[v] + float64 (slot) + slotNudge[here];
+    }
+
+    /**
+        The onset is taken as an argument rather than read from pos16, so a note's length is
+        measured from the moment it was due rather than from the frame that happened to notice.
+
+        A ratchet divides that length rather than adding to it: the note is struck as many times as
+        the lane asks for, sharing the space one strike would have taken.
+    */
+    void enterSlot (int32 voice, int32 slot, float64 onset)
+    {
+        let v = wrap<voiceCount> (voice);
+        let here = wrap<totalSlots> (voice * maxSteps + slot);
+
+        // A note the rate lane has left out of this pass is passed over rather than cut short:
+        // whatever is still sounding carries on, exactly as a rest would let it.
+        if (! voiceEnabled[v] || ! slotIsTrigger[here] || ! slotSounds[here])
+            return;
+
+        let hits = max (slotRatchet[here], 1);
+        let interval = float64 (slotSpan[here]) / float64 (hits);
         let gateFraction = float64 (clamp (slotGate[here], 1.0f, 100.0f)) * 0.01;
-        noteOffAt[v] = pos16 + float64 (slotSpan[here]) * gateFraction;
+
+        // Whatever the last note still had to say is cut off by this one starting.
+        strikesLeft[v]    = hits - 1;
+        strikeInterval[v] = interval;
+        strikeNextAt[v]   = onset + interval;
+        strikeNote[v]     = slotPitch[here];
+        strikeVelocity[v] = slotVelocity[here];
+        strikeGate[v]     = gateFraction;
+
+        strike (voice, slotPitch[here], slotVelocity[here], onset, interval * gateFraction);
+    }
+
+    /// Every slot whose moment has arrived, in the order they were drawn. A rest costs a step of
+    /// the walk and nothing else, which keeps one pointer standing in for the whole pass.
+    void soundDueSlots (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        while (voiceNextSlot[v] < voicePatternLength[v])
+        {
+            let onset = onsetOf (voice, voiceNextSlot[v]);
+
+            if (onset > pos16)
+                break;
+
+            enterSlot (voice, voiceNextSlot[v], onset);
+            ++voiceNextSlot[v];
+        }
     }
 
     /// Only the first voice of each scene starts enabled - eight at once is unusable as an
@@ -611,44 +787,99 @@ processor Orrery [[ main ]]
     }
 
     //==============================================================================
+    /**
+        The pass a voice is resolving, which turns over half a step before the music does. A note
+        nudged back off the downbeat has to be known before its pass has nominally begun, and half
+        a step of lookahead is exactly the most a nudge can ask for.
+    */
+    int64 resolvingPassOf (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        return int64 (floor ((pos16 + maxNudgeSteps) / float64 (voicePatternLength[v])));
+    }
+
+    void openPass (int32 voice, int64 pass)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        voiceCurrentPass[v] = pass;
+        voicePassStart[v]   = float64 (pass) * float64 (voicePatternLength[v]);
+        voiceNextSlot[v]    = 0;
+    }
+
+    /**
+        Puts a voice down wherever the transport has jumped to. Everything already behind us has
+        had its moment and is not owed one, apart from a note we have only just landed on: starting
+        on a downbeat should still play it.
+    */
+    void locateVoice (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        openPass (voice, resolvingPassOf (voice));
+        voiceCurrentSlot[v] = -1;
+        buildVoice (voice);
+
+        while (voiceNextSlot[v] < voicePatternLength[v]
+                && onsetOf (voice, voiceNextSlot[v]) < pos16 - 0.05)
+            ++voiceNextSlot[v];
+    }
+
+    /// The playhead follows the metre rather than the notes, so it reads the pass the music is
+    /// actually in rather than the one being resolved half a step ahead of it.
+    void movePlayhead (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+        let patternSpan = float64 (voicePatternLength[v]);
+        let loopPos = pos16 - floor (pos16 / patternSpan) * patternSpan;
+        let slot = clamp (int32 (floor (loopPos)), 0, voicePatternLength[v] - 1);
+
+        if (slot != voiceCurrentSlot[v])
+        {
+            voiceCurrentSlot[v] = slot;
+            playheadOut <- Playhead (voice, slot);
+        }
+    }
+
     /// Each voice runs its own loop over the shared timeline, so a 12-step voice and a 16-step
     /// voice drift against each other instead of being forced onto one bar length.
     void advanceVoice (int32 voice)
     {
         let v = wrap<voiceCount> (voice);
-        let patternSpan = float64 (voicePatternLength[v]);
-        let pass = int64 (floor (pos16 / patternSpan));
-        let loopPos = pos16 - float64 (pass) * patternSpan;
-        let slot = clamp (int32 (floor (loopPos)), 0, voicePatternLength[v] - 1);
-
-        if (pass != voiceCurrentPass[v])
-        {
-            if (voiceCurrentPass[v] >= 0)
-                startPass (voice);
-
-            voiceCurrentPass[v] = pass;
-            voiceCurrentSlot[v] = -1;
-        }
-
-        if (voiceNeedsRebuild[v])
-            buildVoice (voice);
 
         if (needsRelocate)
         {
-            voiceCurrentSlot[v] = slot;
-            playheadOut <- Playhead (voice, slot);
-
-            // Dropping in at the very top of a slot should still play it, so that starting the
-            // transport on the downbeat doesn't swallow the first note.
-            if (loopPos - float64 (slot) < 0.05)
-                enterSlot (voice, slot);
+            locateVoice (voice);
         }
-        else if (slot != voiceCurrentSlot[v])
+        else
         {
-            voiceCurrentSlot[v] = slot;
-            enterSlot (voice, slot);
-            playheadOut <- Playhead (voice, slot);
+            // Settle what the pass still owes before it is replaced: a note nudged past the last
+            // slot is due exactly as the next pass opens.
+            soundDueSlots (voice);
+
+            let pass = resolvingPassOf (voice);
+
+            if (pass != voiceCurrentPass[v])
+            {
+                if (voiceCurrentPass[v] >= 0)
+                    advancePassCounters (voice);
+
+                // The pass has to be opened before it is resolved: which pass a voice has turned
+                // to is what tells the rate lane whether a step takes this one.
+                openPass (voice, pass);
+                buildVoice (voice);
+            }
+            else if (voiceNeedsRebuild[v])
+            {
+                buildVoice (voice);
+            }
         }
+
+        // A note starting cancels the strikes the last one still owed, so the slots go first.
+        soundDueSlots (voice);
+        soundDueStrikes (voice);
+        movePlayhead (voice);
     }
 
     void main()

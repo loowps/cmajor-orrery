@@ -50,6 +50,11 @@ export function laneValueAt(lane: LaneState, readIndex: number): number {
  * Every slot is one 16th. A slot either starts a note, extends the note before it, or is
  * silent — so a step's length is emergent rather than stored, and gate is a fraction of
  * whatever length the holds produced.
+ *
+ * This resolves the pattern rather than a pass of it. The rate lane is the one thing that reads
+ * differently from one turn to the next, and it only silences a note: the note still keeps its
+ * place, its span and its turn at the per-note lanes, so everything resolved here is true of
+ * every pass and the rate is carried on the note for the editor to mark.
  */
 export function resolvePattern(voice: Voice): ResolvedPattern {
   const slots: SlotState[] = []
@@ -78,7 +83,10 @@ export function resolvePattern(voice: Voice): ResolvedPattern {
         span: 1,
         pitch: readLane(voice, 'pitch', position, noteIndex),
         velocity: readLane(voice, 'velocity', position, noteIndex),
-        gate: readLane(voice, 'gate', position, noteIndex)
+        gate: readLane(voice, 'gate', position, noteIndex),
+        nudge: readLane(voice, 'nudge', position, noteIndex),
+        ratchet: readLane(voice, 'ratchet', position, noteIndex),
+        rate: readLane(voice, 'rate', position, noteIndex)
       }
 
       notes.push(currentNote)

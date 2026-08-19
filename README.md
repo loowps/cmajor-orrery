@@ -5,7 +5,7 @@ selector in the header](screenshot.png)
 
 A host-synced generative MIDI sequencer, built as a [cmajor] patch with a [vuejs] UI.
 
-Eight voices, five lanes each. Every lane cycles through its own window of values at its own length,
+Eight voices, eight lanes each. Every lane cycles through its own window of values at its own length,
 so the lanes phase against one another and a pattern keeps turning without repeating. Nothing is
 decided by chance at playback: what you draw is what plays.
 
@@ -27,10 +27,27 @@ otherwise                           -> rest
 threshold rather than a coin toss, the pattern is stable and the editor can draw exactly what will
 play — Density and Hold set the waterline, the lanes draw the shape.
 
+**Rate** is how often a step comes round, counted in passes rather than thrown as dice — 50% plays
+every other pass, 33% every third, spread as evenly as the fraction allows. Each step becomes
+another wheel turning at its own ratio, and a bar of them coincides and parts the way the lanes
+themselves do. It only silences a note: the note keeps its slot, its span and its turn at the
+per-note lanes, so the melody never rotates just because a step sat one out.
+
+**Nudge** is read at every slot too, and takes a note off the grid by up to half a 16th either way.
+A slot is therefore a moment rather than an edge: draw a short nudge lane and the rhythm falls
+through a groove, draw a long one and the pattern limps, leans and rights itself as it turns. Half a
+step is the limit for a reason — at exactly half, a note pushed late can reach the moment of the one
+after it but never overtake it, so a pass is always heard in the order it was drawn.
+
+**Ratchet** strikes a note more than once inside its own length — up to eight times — dividing that
+length rather than adding to it, so the strikes share the space one note would have taken and the
+pattern keeps its shape. Draw it against the hold lane and a long note becomes a roll; draw it
+against a short one and a 16th becomes a burst.
+
 **Pitch**, **Velocity** and **Gate** describe a note and advance once per note, so a five-value pitch
 lane plays its five values in order however the rhythm falls, and no value goes unused when the
 density changes. Note length is emergent rather than stored — the holds produce it — and gate is a
-percentage of whatever length they produced.
+percentage of whatever length they produced, measured from the moment the note was actually due.
 
 ## Lanes
 

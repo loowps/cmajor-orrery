@@ -87,12 +87,12 @@ header {
   border: 1px solid var(--border-strong);
   border-radius: 7px;
   color: var(--text);
-  font-size: 1.05rem;
+  font-size: var(--text-mark);
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    border-color 90ms ease;
+    background-color var(--dur-control),
+    border-color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);
@@ -106,7 +106,7 @@ header {
 }
 
 .name {
-  font-size: 0.9rem;
+  font-size: var(--text-body);
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -121,14 +121,14 @@ header {
   border-radius: var(--radius);
   background: transparent;
   color: var(--text-dim);
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   letter-spacing: 0.02em;
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    border-color 90ms ease,
-    color 90ms ease;
+    background-color var(--dur-control),
+    border-color var(--dur-control),
+    color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);

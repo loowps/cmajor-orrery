@@ -7,14 +7,28 @@ const { patternLength, resolvedPattern, playheadSlot } = storeToRefs(useSequence
 
 const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
+/**
+ * Notes are placed where they sound rather than where they are stored, so a nudged one sits off
+ * the grid the beat markers draw - which is the whole point of having nudged it. A ratchet is
+ * drawn as the strikes it actually is, sharing the length one note would have had, and only the
+ * first of them carries the name.
+ */
 const placedNotes = computed(() =>
-  resolvedPattern.value.notes.map((note) => ({
-    key: note.startSlot,
-    label: `${noteNames[note.pitch % 12]}${Math.floor(note.pitch / 12) - 1}`,
-    left: (note.startSlot / patternLength.value) * 100,
-    width: ((note.span * (note.gate / 100)) / patternLength.value) * 100,
-    opacity: 0.5 + (note.velocity / 127) * 0.5
-  }))
+  resolvedPattern.value.notes.flatMap((note) => {
+    const hits = Math.max(1, Math.round(note.ratchet))
+    const interval = note.span / hits
+    const onset = note.startSlot + note.nudge / 100
+
+    return Array.from({ length: hits }, (_unused, hit) => ({
+      key: `${note.startSlot}:${hit}`,
+      label: hit === 0 ? `${noteNames[note.pitch % 12]}${Math.floor(note.pitch / 12) - 1}` : '',
+      left: ((onset + hit * interval) / patternLength.value) * 100,
+      width: ((interval * (note.gate / 100)) / patternLength.value) * 100,
+      opacity: 0.5 + (note.velocity / 127) * 0.5,
+      /// Weight already says velocity, so a note that only comes round sometimes is drawn hollow.
+      isConditional: note.rate < 100
+    }))
+  })
 )
 
 /**
@@ -49,9 +63,10 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
         v-for="note in placedNotes"
         :key="note.key"
         class="note"
+        :class="{ conditional: note.isConditional }"
         :style="{ left: `${note.left}%`, width: `${note.width}%`, opacity: note.opacity }"
       >
-        <span>{{ note.label }}</span>
+        <span v-if="note.label">{{ note.label }}</span>
       </div>
 
       <div
@@ -81,7 +96,7 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   width: var(--lane-header-width);
   flex: none;
   align-self: center;
-  font-size: 0.74rem;
+  font-size: var(--text-lane);
   letter-spacing: 0.02em;
   color: var(--text-dim);
 }
@@ -114,16 +129,26 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   bottom: var(--space-1);
   min-width: 2px;
   background: var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   overflow: hidden;
 
   span {
     padding-left: var(--space-2);
-    font-size: 0.58rem;
+    font-size: var(--text-micro);
     color: var(--accent-ink);
     white-space: nowrap;
+  }
+
+  /// Outlined rather than filled: the note is placed, but only some passes take it.
+  &.conditional {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--accent);
+
+    span {
+      color: var(--accent);
+    }
   }
 }
 
