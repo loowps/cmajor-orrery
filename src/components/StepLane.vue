@@ -32,9 +32,23 @@ const definition = computed(() => laneDefinition(laneId))
 const lane = computed(() => store.laneOf(laneId))
 
 const isFocused = computed(() => focusedLaneId.value === laneId)
+const isCollapsed = computed(() => store.isLaneCollapsed(laneId))
 
-/// One lane takes half the available height when focused; otherwise every lane shares it.
-const growth = computed(() => (isFocused.value ? 4 : 1))
+/**
+ * One lane takes half the available height when focused; otherwise every lane shares it. A folded
+ * lane asks for none of it and takes the height of its own name instead, so folding two away is
+ * what gives the rest room to be drawn in.
+ */
+const growth = computed(() => {
+  if (isCollapsed.value) return 0
+  return isFocused.value ? 4 : 1
+})
+
+/**
+ * Shared by the fold's two halves - the share of the stack the lane gives up, and the fade that
+ * takes its contents out of sight - so neither can outlast the other.
+ */
+const foldDurationMs = 120
 
 const threshold = computed(() => {
   if (laneId === 'trigger') return triggerThreshold.value
@@ -56,12 +70,26 @@ const thresholdHeight = computed(() => {
   return span === 0 ? null : clamp((threshold.value - lane.value.outputMin) / span, 0, 1)
 })
 
+/**
+ * Where zero sits inside the lane's output range, which is the height a bar is drawn from. Every
+ * lane whose range is entirely positive answers the foot of the track, so a bipolar lane needs no
+ * flag of its own - it is simply one whose zero has risen off the floor.
+ */
+const zeroHeight = computed(() => {
+  const span = lane.value.outputMax - lane.value.outputMin
+
+  return span === 0 ? 0 : clamp(-lane.value.outputMin / span, 0, 1)
+})
+
 interface LaneCell {
   index: number
   value: number
   output: number
   isInWindow: boolean
   crossesThreshold: boolean
+  /// Drawn from zero to the value, so a negative one hangs below the line instead of standing on it.
+  barBottom: number
+  barHeight: number
 }
 
 const cells = computed<LaneCell[]>(() =>
@@ -75,7 +103,9 @@ const cells = computed<LaneCell[]>(() =>
       value,
       output,
       isInWindow,
-      crossesThreshold: threshold.value !== null && output >= threshold.value
+      crossesThreshold: threshold.value !== null && output >= threshold.value,
+      barBottom: Math.min(value, zeroHeight.value) * 100,
+      barHeight: Math.abs(value - zeroHeight.value) * 100
     }
   })
 )
@@ -191,10 +221,24 @@ const paintReadout = computed(() => {
 </script>
 
 <template>
-  <div class="lane" :class="{ focused: isFocused }" :style="{ flexGrow: growth }">
+  <div
+    class="lane"
+    :class="{ focused: isFocused, collapsed: isCollapsed }"
+    :style="{ flexGrow: growth, '--fold-duration': `${foldDurationMs}ms` }"
+  >
     <div class="lane-header">
       <div class="header-row">
-        <span class="lane-label">{{ definition.label }}</span>
+        <!-- The name is the handle, so folding costs the row no width of its own. -->
+        <button
+          class="lane-label"
+          :title="isCollapsed ? 'Unfold this lane' : 'Fold this lane away'"
+          @click="store.toggleLaneCollapsed(laneId)"
+        >
+          <svg class="caret" viewBox="0 0 8 8" aria-hidden="true">
+            <path d="M2 1.4 5.6 4 2 6.6z" fill="currentColor" />
+          </svg>
+          <span>{{ definition.label }}</span>
+        </button>
 
         <!-- How the lane reads rather than something done to it, so it leads the row. -->
         <ActionIcon
@@ -209,7 +253,11 @@ const paintReadout = computed(() => {
           name="pencil"
           compact
           :active="isFocused"
-          :title="isFocused ? 'Collapse this lane' : 'Enlarge this lane for editing'"
+          :title="
+            isFocused
+              ? 'Give this lane back its share of the height'
+              : 'Enlarge this lane for editing'
+          "
           @click="store.toggleLaneFocus(laneId)"
         />
 
@@ -251,63 +299,76 @@ const paintReadout = computed(() => {
       />
     </div>
 
-    <div class="lane-body">
-      <div
-        ref="trackElement"
-        class="track"
-        :class="{ painting: isPainting }"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
-      >
+    <!--
+      The fade decides when the body goes: Vue holds the element until the transition it is
+      running has actually ended, so the contents are out of sight before they are taken away.
+      Nothing here is timed against anything else.
+    -->
+    <Transition name="fold">
+      <div v-if="!isCollapsed" class="lane-body">
         <div
-          v-for="cell in cells"
-          :key="cell.index"
-          class="cell"
-          :class="[
-            emphasisFor(cell),
-            { beat: cell.index % 4 === 0, playing: cell.index === playingCellIndex }
-          ]"
-          :title="`${cell.index + 1}: ${formatOutput(cell.output)}${definition.unit}`"
+          ref="trackElement"
+          class="track"
+          :class="{ painting: isPainting }"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="onPointerUp"
         >
-          <div class="bar" :style="{ height: `${cell.value * 100}%` }" />
+          <div
+            v-for="cell in cells"
+            :key="cell.index"
+            class="cell"
+            :class="[
+              emphasisFor(cell),
+              { beat: cell.index % 4 === 0, playing: cell.index === playingCellIndex }
+            ]"
+            :title="`${cell.index + 1}: ${formatOutput(cell.output)}${definition.unit}`"
+          >
+            <div
+              class="bar"
+              :style="{ bottom: `${cell.barBottom}%`, height: `${cell.barHeight}%` }"
+            />
+          </div>
+
+          <div
+            v-if="thresholdHeight !== null"
+            class="threshold"
+            :style="{ bottom: `${thresholdHeight * 100}%` }"
+          />
+
+          <!-- Only worth drawing once zero has left the floor, where the track's own edge marks it. -->
+          <div v-if="zeroHeight > 0" class="zero" :style="{ bottom: `${zeroHeight * 100}%` }" />
+
+          <div
+            class="phase"
+            :class="{ dragging: isDraggingPhase }"
+            :style="{ left: `${phaseLeftPercentage}%` }"
+            title="Drag to set where in its window the lane starts reading"
+            @pointerdown="onPhasePointerDown"
+            @pointermove="onPhasePointerMove"
+            @pointerup="onPhasePointerUp"
+            @pointercancel="onPhasePointerUp"
+          />
+
+          <div
+            v-if="paintReadout"
+            class="paint-readout"
+            :class="{ 'near-top': paintReadout.isNearTop }"
+            :style="{ left: `${paintReadout.left}%`, bottom: `${paintReadout.bottom}%` }"
+          >
+            {{ paintReadout.text }}
+          </div>
         </div>
 
-        <div
-          v-if="thresholdHeight !== null"
-          class="threshold"
-          :style="{ bottom: `${thresholdHeight * 100}%` }"
+        <LaneRangeBar
+          :start="lane.start"
+          :length="lane.length"
+          :slot-count="patternLength"
+          @change="(start, length) => store.setLaneWindow(laneId, start, length)"
         />
-
-        <div
-          class="phase"
-          :class="{ dragging: isDraggingPhase }"
-          :style="{ left: `${phaseLeftPercentage}%` }"
-          title="Drag to set where in its window the lane starts reading"
-          @pointerdown="onPhasePointerDown"
-          @pointermove="onPhasePointerMove"
-          @pointerup="onPhasePointerUp"
-          @pointercancel="onPhasePointerUp"
-        />
-
-        <div
-          v-if="paintReadout"
-          class="paint-readout"
-          :class="{ 'near-top': paintReadout.isNearTop }"
-          :style="{ left: `${paintReadout.left}%`, bottom: `${paintReadout.bottom}%` }"
-        >
-          {{ paintReadout.text }}
-        </div>
       </div>
-
-      <LaneRangeBar
-        :start="lane.start"
-        :length="lane.length"
-        :slot-count="patternLength"
-        @change="(start, length) => store.setLaneWindow(laneId, start, length)"
-      />
-    </div>
+    </Transition>
   </div>
 </template>
 
@@ -321,12 +382,39 @@ const paintReadout = computed(() => {
   min-height: var(--lane-min-height);
   padding: var(--lane-inset);
   overflow: hidden;
-  transition: flex-grow 140ms ease;
+  /* Folding a lane is the other lanes growing, so its share of the stack is the honest thing to
+     animate - and the floor moves with it, or unfolding would snap back up to the open minimum
+     before it had started. Both are layout properties, which is why this is kept short. */
+  transition:
+    flex-grow var(--fold-duration, 120ms) ease,
+    min-height var(--fold-duration, 120ms) ease;
 }
 
 /// The lane's own surface is its boundary, so the focus ring belongs to the whole row.
 .lane.focused {
   box-shadow: inset 0 0 0 1px var(--accent-dim);
+}
+
+/// Folded, the lane is only as tall as its own header, and gives up its share of the stack -
+/// including the right to be squashed any further when the stack runs out of room.
+.lane.collapsed {
+  flex-shrink: 0;
+  min-height: var(--lane-folded-height);
+}
+
+/**
+ * The contents fade as the lane closes over them, so what is left at the end of the fold is a
+ * sliver of nothing rather than a sliver of squashed track. Opacity is composited, so this is the
+ * one half of the fold that costs no layout - and it is the half that decides when the body goes.
+ */
+.fold-enter-active,
+.fold-leave-active {
+  transition: opacity var(--fold-duration, 120ms) ease;
+}
+
+.fold-enter-from,
+.fold-leave-to {
+  opacity: 0;
 }
 
 .lane-header {
@@ -336,6 +424,10 @@ const paintReadout = computed(() => {
   flex-direction: column;
   justify-content: flex-start;
   gap: var(--space-2);
+  /* The lane clips to its padding box, which leaves the inset below the header for anything
+     overflowing it to show through - a folded lane showed the top edge of its range control that
+     way. The header keeps its own overflow, so what does not fit in it is simply not there. */
+  overflow: hidden;
 }
 
 .header-row {
@@ -348,16 +440,45 @@ const paintReadout = computed(() => {
 .lane-label {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
   font-size: 0.74rem;
   letter-spacing: 0.02em;
-  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  &:hover {
+    color: var(--text);
+  }
 }
 
 .lane.focused .lane-label {
   color: var(--text);
+}
+
+/// Points down at a lane that is open and along at one that is folded, the way a disclosure does.
+.caret {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  transform: rotate(90deg);
+  transition: transform var(--fold-duration, 120ms) ease;
+}
+
+.lane.collapsed .caret {
+  transform: rotate(0deg);
 }
 
 .lane-body {
@@ -426,9 +547,10 @@ const paintReadout = computed(() => {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0;
   background: var(--bar-idle);
-  transition: height 40ms linear;
+  transition:
+    height 40ms linear,
+    bottom 40ms linear;
 }
 
 .cell.on .bar {
@@ -471,6 +593,16 @@ const paintReadout = computed(() => {
   left: var(--space-1);
   right: var(--space-1);
   border-top: 1px dashed var(--marker);
+  pointer-events: none;
+}
+
+/// The line a bipolar lane is drawn from. Quieter than the threshold, which is a value being
+/// tested against; this one is only where nothing is being asked for.
+.zero {
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-1);
+  border-top: 1px solid var(--border-strong);
   pointer-events: none;
 }
 

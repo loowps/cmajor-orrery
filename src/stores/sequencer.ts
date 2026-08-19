@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import {
   triggerThresholdOf,
   clamp,
+  createLaneState,
   createVoice,
   holdThresholdOf,
   laneDefinition,
@@ -55,10 +56,18 @@ function fillLane(lane: LaneState, random: () => number, amount = 1) {
 const starterLaneLengths: Partial<Record<LaneId, number>> = {
   trigger: 16,
   hold: 7,
+  rate: 3,
+  nudge: 4,
+  ratchet: 8,
   pitch: 5,
   velocity: 16,
   gate: 3
 }
+
+/// A new instance plays on the grid, one strike to a note, every note every pass: timing, repeats
+/// and how often a step comes round are the lanes where a random draw is a mess rather than a
+/// starting point, so they are left inert until drawn on.
+const startersLeftFlat: LaneId[] = ['rate', 'nudge', 'ratchet']
 
 function createStarterVoices(): Voice[] {
   const random = createRandom(0x52756e64)
@@ -69,7 +78,10 @@ function createStarterVoices(): Voice[] {
     for (const definition of laneDefinitions) {
       const lane = voice.lanes[definition.id]
       lane.length = starterLaneLengths[definition.id] ?? definition.defaultLength
-      fillLane(lane, random)
+
+      if (!startersLeftFlat.includes(definition.id)) {
+        fillLane(lane, random)
+      }
     }
 
     return voice
@@ -109,6 +121,18 @@ export const useSequencerStore = defineStore('sequencer', () => {
 
   /// Purely a view mode: which lane is enlarged for editing, if any. Never part of a snapshot.
   const focusedLaneId = ref<LaneId | null>(null)
+
+  /**
+   * Lanes folded away to their name, so a voice can be worked on through two or three of them
+   * while the rest keep their place in the order. A view mode like the focus above it, and out of
+   * the snapshot for the same reason: it says how the editor is being looked through, not what
+   * the voice plays.
+   */
+  const collapsedLaneIds = ref<Set<LaneId>>(new Set())
+
+  function isLaneCollapsed(laneId: LaneId): boolean {
+    return collapsedLaneIds.value.has(laneId)
+  }
 
   /// How far every randomize action moves values towards their new draw.
   const randomizeAmount = ref(1)
@@ -228,6 +252,10 @@ export const useSequencerStore = defineStore('sequencer', () => {
 
   function normalizeLanesOf(voice: Voice) {
     for (const laneId of laneIds) {
+      /// A pattern written before this lane existed simply doesn't carry it, and its inert value
+      /// is what the voice was playing anyway.
+      voice.lanes[laneId] ??= createLaneState(laneDefinition(laneId))
+
       const lane = voice.lanes[laneId]
       lane.length = clamp(lane.length, 1, voice.patternLength)
       lane.start = clamp(lane.start, 0, voice.patternLength - lane.length)
@@ -258,8 +286,27 @@ export const useSequencerStore = defineStore('sequencer', () => {
     setVoiceOutputRange(selectedVoiceIndex.value, laneId, low, high)
   }
 
+  /// The two view modes are opposites, so asking for one always answers the other: a lane cannot
+  /// be enlarged for editing and folded away at the same time.
   function toggleLaneFocus(laneId: LaneId) {
     focusedLaneId.value = focusedLaneId.value === laneId ? null : laneId
+
+    if (focusedLaneId.value === laneId) {
+      collapsedLaneIds.value.delete(laneId)
+    }
+  }
+
+  function toggleLaneCollapsed(laneId: LaneId) {
+    if (collapsedLaneIds.value.has(laneId)) {
+      collapsedLaneIds.value.delete(laneId)
+      return
+    }
+
+    collapsedLaneIds.value.add(laneId)
+
+    if (focusedLaneId.value === laneId) {
+      focusedLaneId.value = null
+    }
   }
 
   function toggleLaneLock(laneId: LaneId) {
@@ -371,12 +418,13 @@ export const useSequencerStore = defineStore('sequencer', () => {
   }
 
   /**
-   * A stored pattern outlives the build that wrote it, and a lane this build expects may simply
-   * not be there - a renamed lane leaves the record keyed under a name nothing reads any more.
-   * Applying that half a voice would take the editor down on load, so it is discarded instead.
+   * A stored pattern outlives the build that wrote it, so a lane this build expects may simply not
+   * be there - it was written before that lane existed, or a rename left the record keyed under a
+   * name nothing reads any more. A voice still carrying lanes this build knows is repaired as it
+   * loads; one carrying none of them is not a voice, and applying it would take the editor down.
    */
-  function hasEveryLane(voice: Voice): boolean {
-    return laneIds.every((laneId) => Array.isArray(voice.lanes?.[laneId]?.values))
+  function hasAnyLane(voice: Voice): boolean {
+    return laneIds.some((laneId) => Array.isArray(voice.lanes?.[laneId]?.values))
   }
 
   /**
@@ -395,7 +443,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     return (
       Array.isArray(scene?.voices) &&
       scene.voices.length === voiceCount &&
-      scene.voices.every(hasEveryLane)
+      scene.voices.every(hasAnyLane)
     )
   }
 
@@ -444,6 +492,9 @@ export const useSequencerStore = defineStore('sequencer', () => {
     playheadSlots,
     focusedLaneId,
     toggleLaneFocus,
+    collapsedLaneIds,
+    isLaneCollapsed,
+    toggleLaneCollapsed,
     randomizeAmount,
     laneOf,
     setValueFromNormalized,

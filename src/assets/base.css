@@ -71,6 +71,9 @@
   --lane-gutter: var(--space-6);
   --lane-inset: var(--space-3) var(--band-inset);
   --lane-min-height: 82px;
+  /* A folded lane is one row of compact icons and the lane's own inset. It is a floor rather than
+     a height, so a header that grows taller than this still gets the room it needs. */
+  --lane-folded-height: calc(19px + 2 * var(--space-3));
 }
 
 *,
