@@ -116,7 +116,7 @@ const { selectedVoice, selectedVoiceIndex, patternLength, density, holdAmount, r
 }
 
 .scope {
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   letter-spacing: 0.02em;
   color: var(--accent);
 }
@@ -128,7 +128,7 @@ const { selectedVoice, selectedVoiceIndex, patternLength, density, holdAmount, r
 }
 
 .label {
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   letter-spacing: 0.02em;
   color: var(--text-dim);
 }

@@ -447,7 +447,7 @@ const paintReadout = computed(() => {
   background: transparent;
   border: none;
   color: var(--text-dim);
-  font-size: 0.74rem;
+  font-size: var(--text-lane);
   letter-spacing: 0.02em;
   text-align: left;
   cursor: pointer;
@@ -513,7 +513,7 @@ const paintReadout = computed(() => {
   min-width: 0;
   position: relative;
   background: var(--bg-cell);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 
   &.beat {
@@ -549,8 +549,8 @@ const paintReadout = computed(() => {
   right: 0;
   background: var(--bar-idle);
   transition:
-    height 40ms linear,
-    bottom 40ms linear;
+    height var(--dur-signal),
+    bottom var(--dur-signal);
 }
 
 .cell.on .bar {
@@ -615,9 +615,9 @@ const paintReadout = computed(() => {
   transform: translate(-50%, -4px);
   padding: var(--space-1) var(--space-3);
   background: var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--accent-ink);
-  font-size: 0.6rem;
+  font-size: var(--text-micro);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;

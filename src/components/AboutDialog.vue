@@ -96,7 +96,7 @@ defineExpose({ open })
 
 .vendor {
   color: var(--text);
-  font-size: 2.625rem;
+  font-size: var(--text-display);
 }
 
 .identity {
@@ -106,7 +106,7 @@ defineExpose({ open })
 }
 
 .name {
-  font-size: 0.86rem;
+  font-size: var(--text-body);
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.18em;
@@ -114,7 +114,8 @@ defineExpose({ open })
 
 .version {
   color: var(--text-faint);
-  font-size: 0.66rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
 }
 
 .links {
@@ -132,13 +133,13 @@ defineExpose({ open })
     border: 1px solid var(--border);
     border-radius: var(--radius);
     color: var(--text-dim);
-    font-size: 0.68rem;
+    font-size: var(--text-label);
     text-align: center;
     text-decoration: none;
     transition:
-      background-color 90ms ease,
-      border-color 90ms ease,
-      color 90ms ease;
+      background-color var(--dur-control),
+      border-color var(--dur-control),
+      color var(--dur-control);
 
     &:hover {
       background: var(--bg-control-hover);
@@ -163,8 +164,8 @@ defineExpose({ open })
   color: var(--text-faint);
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    color 90ms ease;
+    background-color var(--dur-control),
+    color var(--dur-control);
 
   svg {
     width: 11px;

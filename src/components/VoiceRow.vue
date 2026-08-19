@@ -147,7 +147,7 @@ const resetCycleSteps = computed({
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  font-size: 0.7rem;
+  font-size: var(--text-label);
   cursor: pointer;
 
   &:hover {
@@ -172,12 +172,12 @@ const resetCycleSteps = computed({
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text-faint);
-  font-size: 0.66rem;
+  font-size: var(--text-small);
   cursor: pointer;
   transition:
-    background-color 90ms ease,
-    border-color 90ms ease,
-    color 90ms ease;
+    background-color var(--dur-control),
+    border-color var(--dur-control),
+    color var(--dur-control);
 
   &:hover {
     border-color: var(--border-strong);
@@ -198,7 +198,7 @@ const resetCycleSteps = computed({
 }
 
 .notes {
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
   color: var(--text-faint);
 }

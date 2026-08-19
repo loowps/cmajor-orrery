@@ -96,7 +96,7 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   width: var(--lane-header-width);
   flex: none;
   align-self: center;
-  font-size: 0.74rem;
+  font-size: var(--text-lane);
   letter-spacing: 0.02em;
   color: var(--text-dim);
 }
@@ -129,14 +129,14 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   bottom: var(--space-1);
   min-width: 2px;
   background: var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   overflow: hidden;
 
   span {
     padding-left: var(--space-2);
-    font-size: 0.58rem;
+    font-size: var(--text-micro);
     color: var(--accent-ink);
     white-space: nowrap;
   }

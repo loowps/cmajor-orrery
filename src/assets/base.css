@@ -39,6 +39,31 @@
   --accent-glow: color-mix(in srgb, var(--accent) 18%, transparent);
   --marker-wash: color-mix(in srgb, var(--marker) 16%, transparent);
 
+  /* Sized in px rather than rem: plugin chrome has to hold its proportions whatever the host's
+     webview sets as a root size. Seven steps cover everything from the wordmark to a note name
+     printed inside a sequence bar. */
+  --text-display: 42px;
+  --text-mark: 17px;
+  --text-body: 14px;
+  --text-lane: 12px;
+  --text-label: 11px;
+  --text-small: 10px;
+  --text-micro: 9px;
+
+  /* Anything read as a value rather than a sentence - versions, tokens, note names. The host's
+     own monospace, for the same reason the sans stack is the host's. */
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Tied to what is moving, so nothing eases for decoration. Signal is linear because it is data;
+     a control easing is a gesture answering the pointer. The fold has its own duration, shared
+     with the script that has to outlast it. */
+  --dur-signal: 40ms linear;
+  --dur-control: 90ms ease;
+
+  /* Small for anything living inside a well - cells, bars, handles. Base for controls. Large for
+     the wells and sheets themselves. */
+  --radius-sm: 3px;
   --radius: 4px;
   --radius-lg: 8px;
 
@@ -59,6 +84,8 @@
   --control-inset: var(--space-2) var(--space-4);
   /* Square controls - scene slots, voice buttons, icon buttons - all share one size. */
   --control-size: 26px;
+  /* The compact variant, only ever inside a lane header. */
+  --control-size-compact: 19px;
   --band-inset: var(--space-5);
 
   /* The voices table is the widest thing in the plugin: ten fixed columns plus their gaps. Below
@@ -73,7 +100,7 @@
   --lane-min-height: 82px;
   /* A folded lane is one row of compact icons and the lane's own inset. It is a floor rather than
      a height, so a header that grows taller than this still gets the room it needs. */
-  --lane-folded-height: calc(19px + 2 * var(--space-3));
+  --lane-folded-height: calc(var(--control-size-compact) + 2 * var(--space-3));
 }
 
 *,
@@ -90,7 +117,7 @@ body {
   background: var(--bg-app);
   line-height: 1.5;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
+  font-size: var(--text-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

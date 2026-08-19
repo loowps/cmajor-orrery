@@ -62,7 +62,7 @@ const onValueChange = (event: Event) => {
   display: flex;
   gap: var(--space-5);
   place-items: center;
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   color: var(--text-dim);
 }
 
@@ -83,8 +83,7 @@ output {
   appearance: none;
   flex: 1;
   min-width: 0;
-  outline: none;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   height: 4px;
   background: linear-gradient(
     to right,
@@ -95,7 +94,7 @@ output {
 
 .slider::-webkit-slider-runnable-track {
   height: 4px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .slider::-webkit-slider-thumb {
@@ -106,7 +105,7 @@ output {
   background-color: var(--accent);
   border-radius: 50%;
   border: none;
-  transition: box-shadow 120ms ease;
+  transition: box-shadow var(--dur-control);
   transform: translateY(-35%);
 }
 

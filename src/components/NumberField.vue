@@ -174,7 +174,7 @@ function cancel() {
 .value {
   display: block;
   line-height: 20px;
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
@@ -185,7 +185,7 @@ input {
   background: transparent;
   border: 0 none;
   outline: none;
-  font-size: 0.68rem;
+  font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }

@@ -130,7 +130,7 @@ function onPointerUp(event: PointerEvent) {
   border-radius: var(--radius);
   cursor: grab;
   overflow: hidden;
-  transition: background-color 90ms ease;
+  transition: background-color var(--dur-control);
 
   &:hover {
     background: var(--accent);
@@ -142,7 +142,7 @@ function onPointerUp(event: PointerEvent) {
   left: 6px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 0.56rem;
+  font-size: var(--text-micro);
   font-variant-numeric: tabular-nums;
   color: var(--accent-ink);
   white-space: nowrap;

@@ -68,7 +68,7 @@ main {
   align-items: flex-end;
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
-  font-size: 0.64rem;
+  font-size: var(--text-small);
   letter-spacing: 0.03em;
   color: var(--text-faint);
 }
