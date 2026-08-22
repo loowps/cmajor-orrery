@@ -1,4 +1,22 @@
-:root {
+/**
+ * No @font-face rules here: a url() in this stylesheet would resolve against the host page rather
+ * than the patch's own resources, so the faces are registered from script - see src/fonts.ts.
+ *
+ * Tokens and base typography sit on <cmaj-view> rather than on :root, so the host page around it
+ * - a DAW window, or another patch's GUI on the same server - keeps its own.
+ */
+cmaj-view {
+  display: block;
+  height: 100%;
+  color: var(--text);
+  background: var(--bg-app);
+  line-height: 1.5;
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
   --bg-app: #1b1e23;
   --bg-panel: #23272e;
   --bg-sunken: #171a1e;
@@ -33,6 +51,7 @@
   --accent-ink: #4a3812;
 
   --marker: #6cb0ee;
+  --marker-bright: #8fc6f5;
   --marker-ink: #0d1b26;
 
   /* Derived so a palette change carries into the washes instead of leaving them behind. */
@@ -40,15 +59,24 @@
   --marker-wash: color-mix(in srgb, var(--marker) 16%, transparent);
 
   /* Sized in px rather than rem: plugin chrome has to hold its proportions whatever the host's
-     webview sets as a root size. Seven steps cover everything from the wordmark to a note name
-     printed inside a sequence bar. */
+     webview sets as a root size. Eight steps cover everything from the mark on the about sheet
+     down to a note name printed inside a sequence bar. */
   --text-display: 42px;
+  --text-wordmark: 30px;
   --text-mark: 17px;
   --text-body: 14px;
   --text-lane: 12px;
   --text-label: 11px;
   --text-small: 10px;
   --text-micro: 9px;
+
+  /* Sentences, labels and controls. Shipped with the patch rather than borrowed from the host, so
+     the plugin measures the same in every DAW; the platform stack behind it is the fallback. */
+  --font-sans: IBMPlexSans, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+  /* The brand alone - the mark, and the plugin name beside it in the footer and on the about
+     sheet. Condensed, so wide tracking reads as deliberate rather than a word coming apart. */
+  --font-display: 'Khand', var(--font-sans);
 
   /* Anything read as a value rather than a sentence - versions, tokens, note names. The host's
      own monospace, for the same reason the sans stack is the host's. */
@@ -88,37 +116,29 @@
   --control-size-compact: 19px;
   --band-inset: var(--space-5);
 
-  /* The voices table is the widest thing in the plugin: ten fixed columns plus their gaps. Below
-     this the bands would start overlapping, so the whole layout scrolls instead of squashing -
-     the same bargain the lanes make vertically with --lane-min-height. */
-  --view-min-width: 940px;
+  /* The voices table is the widest thing in the plugin: fourteen fixed columns plus their gaps.
+     Below this the bands would start overlapping, so the whole layout scrolls instead of
+     squashing - the same bargain the lanes make vertically with --lane-min-height. */
+  --view-min-width: 1004px;
 
   /* Holds a lane's name beside five icon buttons without the name having to give way. */
   --lane-header-width: 180px;
   --lane-gutter: var(--space-6);
   --lane-inset: var(--space-3) var(--band-inset);
   --lane-min-height: 82px;
+  /* A lane opened for editing is given this height outright rather than a share of the stack, so
+     the track it draws is the same size whatever the window around it is doing. */
+  --lane-focused-height: 240px;
   /* A folded lane is one row of compact icons and the lane's own inset. It is a floor rather than
      a height, so a header that grows taller than this still gets the room it needs. */
   --lane-folded-height: calc(var(--control-size-compact) + 2 * var(--space-3));
 }
 
-*,
-*::before,
-*::after {
+cmaj-view,
+cmaj-view *,
+cmaj-view *::before,
+cmaj-view *::after {
   box-sizing: border-box;
   margin: 0;
   font-weight: normal;
-}
-
-body {
-  min-height: 100vh;
-  color: var(--text);
-  background: var(--bg-app);
-  line-height: 1.5;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: var(--text-body);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }

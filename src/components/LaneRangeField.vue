@@ -91,6 +91,14 @@ function onPointerUp(event: PointerEvent) {
   dragMode.value = null
 }
 
+/// Bound on the rail alone, so the number fields above it keep the double-click that selects
+/// what they hold. The edges go one at a time because that is all the pair exposes, and outwards
+/// first so neither write is ever asked to cross the one still standing.
+function openToFullRange() {
+  high.value = max
+  low.value = min
+}
+
 const typedLow = computed({
   get: () => low.value,
   set: (value) => {
@@ -133,14 +141,16 @@ const typedHigh = computed({
       ref="railElement"
       class="rail"
       :class="{ dragging: dragMode !== null }"
+      title="Drag the handles to narrow the range — double-click to open it fully"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
       @pointercancel="onPointerUp"
+      @dblclick="openToFullRange"
     >
       <div
         class="span"
         :style="{ left: `${lowFraction}%`, width: `${highFraction - lowFraction}%` }"
-        title="Drag to move the whole range"
+        title="Drag to move the whole range — double-click to open it fully"
         @pointerdown="onPointerDown('span', $event)"
       />
 

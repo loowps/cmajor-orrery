@@ -32,6 +32,7 @@ export function createMockPatchConnection(): PatchConnection {
     addAllParameterListener: () => {},
     removeAllParameterListener: () => {},
 
-    getResourceAddress: (path: string) => path
+    // Root-absolute, so a resource still resolves the same whatever route the dev server is on.
+    getResourceAddress: (path: string) => `/${path}`
   }
 }

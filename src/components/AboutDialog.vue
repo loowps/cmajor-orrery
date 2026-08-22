@@ -106,10 +106,14 @@ defineExpose({ open })
 }
 
 .name {
-  font-size: var(--text-body);
+  --name-tracking: 0.18em;
+
   color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: var(--text-body);
+  letter-spacing: var(--name-tracking);
+  margin-right: calc(-1 * var(--name-tracking));
   text-transform: uppercase;
-  letter-spacing: 0.18em;
 }
 
 .version {

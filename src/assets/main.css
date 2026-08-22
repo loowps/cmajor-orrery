@@ -1,10 +1,10 @@
 @import './base.css';
 
-button {
+cmaj-view button {
   font-family: inherit;
 }
 
-input {
+cmaj-view input {
   font-family: inherit;
 }
 
@@ -12,7 +12,7 @@ input {
  * One focus ring for every control that can take focus, not just the ones that remembered to ask.
  * Kept as an outline so it is drawn outside the control and cannot shift anything around it.
  */
-:focus-visible {
+cmaj-view :focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }

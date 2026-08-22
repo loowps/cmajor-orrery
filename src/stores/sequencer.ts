@@ -14,11 +14,14 @@ import {
   maxSteps,
   minPatternLength,
   nextLaneDirection,
+  patternStart,
+  phaseOffsetOf,
   quantizeToLane,
   sceneCount,
   snapshotVersion,
   type LaneId,
   type LaneState,
+  type PassOrigin,
   type PatternSnapshot,
   type Scene,
   type Voice
@@ -119,6 +122,12 @@ export const useSequencerStore = defineStore('sequencer', () => {
   const selectedVoiceIndex = ref(0)
   const playheadSlots = ref<number[]>(new Array<number>(voiceCount).fill(-1))
 
+  /// Reported alongside the playhead, because a free-running voice is somewhere further along
+  /// its lanes than the pattern's first pass and the editor has no way to know how far.
+  const playheadOrigins = ref<PassOrigin[]>(
+    Array.from({ length: voiceCount }, () => ({ ...patternStart }))
+  )
+
   /// Purely a view mode: which lane is enlarged for editing, if any. Never part of a snapshot.
   const focusedLaneId = ref<LaneId | null>(null)
 
@@ -182,10 +191,26 @@ export const useSequencerStore = defineStore('sequencer', () => {
 
   const selectedVoice = computed(() => voices.value[selectedVoiceIndex.value])
 
-  const resolvedPattern = computed(() => resolvePattern(selectedVoice.value))
+  const playheadSlot = computed(() => playheadSlots.value[selectedVoiceIndex.value] ?? -1)
+
+  /**
+   * The origin describes the voice the patch is playing, which is the sounding scene copy of it.
+   * A scene being edited while another sounds has not turned its lanes at all, so it is read from
+   * the pattern start rather than from wherever the playing scene has carried its own lanes to.
+   */
+  function passOriginOf(voiceIndex: number): PassOrigin {
+    if (editSceneIndex.value !== soundingSceneIndex.value) {
+      return patternStart
+    }
+
+    return playheadOrigins.value[voiceIndex] ?? patternStart
+  }
+
+  const playheadOrigin = computed(() => passOriginOf(selectedVoiceIndex.value))
+
+  const resolvedPattern = computed(() => resolvePattern(selectedVoice.value, playheadOrigin.value))
   const triggerThreshold = computed(() => triggerThresholdOf(selectedVoice.value))
   const holdThreshold = computed(() => holdThresholdOf(selectedVoice.value))
-  const playheadSlot = computed(() => playheadSlots.value[selectedVoiceIndex.value] ?? -1)
 
   const patternLength = computed({
     get: () => selectedVoice.value.patternLength,
@@ -212,6 +237,20 @@ export const useSequencerStore = defineStore('sequencer', () => {
       selectedVoice.value.resetCycleSteps = clamp(Math.round(value), 0, maxSteps)
     }
   })
+
+  const phaseOffset = computed({
+    get: () => phaseOffsetOf(selectedVoice.value),
+    set: (value) => setVoicePhaseOffset(selectedVoiceIndex.value, value)
+  })
+
+  function setVoicePhaseOffset(voiceIndex: number, value: number) {
+    const voice = voices.value[voiceIndex]
+
+    if (voice) {
+      /// One short of the longest a lane can be: a phase equal to the length is the same as none.
+      voice.phaseOffset = clamp(Math.round(value), 0, maxSteps - 1)
+    }
+  }
 
   function laneOf(laneId: LaneId): LaneState {
     return selectedVoice.value.lanes[laneId]
@@ -250,7 +289,9 @@ export const useSequencerStore = defineStore('sequencer', () => {
     lane.direction = nextLaneDirection(lane.direction)
   }
 
-  function normalizeLanesOf(voice: Voice) {
+  function normalizeVoice(voice: Voice) {
+    voice.phaseOffset = phaseOffsetOf(voice)
+
     for (const laneId of laneIds) {
       /// A pattern written before this lane existed simply doesn't carry it, and its inert value
       /// is what the voice was playing anyway.
@@ -385,7 +426,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     }
 
     voice.patternLength = clamp(Math.round(length), minPatternLength, maxSteps)
-    normalizeLanesOf(voice)
+    normalizeVoice(voice)
   }
 
   function setPatternLength(length: number) {
@@ -404,9 +445,20 @@ export const useSequencerStore = defineStore('sequencer', () => {
     }
   }
 
-  function setPlayheadSlot(voiceIndex: number, slot: number) {
-    if (voiceIndex >= 0 && voiceIndex < voiceCount) {
-      playheadSlots.value[voiceIndex] = slot
+  function setPlayhead(voiceIndex: number, slot: number, origin: PassOrigin) {
+    if (voiceIndex < 0 || voiceIndex >= voiceCount) {
+      return
+    }
+
+    playheadSlots.value[voiceIndex] = slot
+
+    /// Written only where it has actually moved: the origin is what the pattern is resolved from,
+    /// so taking the report as it arrives would resolve every lane again on every step of a voice
+    /// that has not turned over.
+    const current = playheadOrigins.value[voiceIndex] ?? patternStart
+
+    if (current.position !== origin.position || current.noteIndex !== origin.noteIndex) {
+      playheadOrigins.value[voiceIndex] = origin
     }
   }
 
@@ -461,7 +513,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     }
 
     scenes.value = padScenes(stored)
-    scenes.value.forEach((scene) => scene.voices.forEach(normalizeLanesOf))
+    scenes.value.forEach((scene) => scene.voices.forEach(normalizeVoice))
   }
 
   return {
@@ -489,7 +541,9 @@ export const useSequencerStore = defineStore('sequencer', () => {
     holdThreshold,
     resolvedPattern,
     playheadSlot,
+    playheadOrigin,
     playheadSlots,
+    passOriginOf,
     focusedLaneId,
     toggleLaneFocus,
     collapsedLaneIds,
@@ -516,13 +570,15 @@ export const useSequencerStore = defineStore('sequencer', () => {
     resetAllVoices,
     setPatternLength,
     setVoicePatternLength,
+    phaseOffset,
+    setVoicePhaseOffset,
     selectVoice,
     toggleVoiceEnabled,
     soloedVoices,
     isAnyVoiceSoloed,
     isVoiceAudible,
     toggleVoiceSolo,
-    setPlayheadSlot,
+    setPlayhead,
     toSnapshot,
     applySnapshot
   }

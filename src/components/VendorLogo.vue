@@ -3,10 +3,18 @@
 </template>
 
 <style scoped lang="scss">
-/// Only scale is left to whatever places the logo: its proportions belong to the mark itself.
+/**
+ * Only scale is left to whatever places the logo: its proportions belong to the mark itself.
+ * Tracking follows the last letter too, so the negative margin gives back the step of space it
+ * leaves to the right of the ink - which is what lets the mark sit flush against a right edge.
+ */
 .vendor-logo {
+  --mark-tracking: 0.16em;
+
+  font-family: var(--font-display);
   font-weight: 600;
-  letter-spacing: 0.16em;
+  letter-spacing: var(--mark-tracking);
+  margin-right: calc(-1 * var(--mark-tracking));
   white-space: nowrap;
   user-select: none;
 }
@@ -19,10 +27,10 @@
  */
 .slashes {
   position: relative;
-  top: -0.04em;
-  margin: 0 0.14em 0 0.02em;
+  top: -0.03em;
+  margin: 0 0.1em 0 0.02em;
   color: var(--accent);
-  font-size: 0.95em;
-  letter-spacing: 0.02em;
+  font-size: 0.92em;
+  letter-spacing: 0;
 }
 </style>

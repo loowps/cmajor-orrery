@@ -3,9 +3,12 @@ import {
   holdThresholdOf,
   laneDefinition,
   laneOutput,
+  phaseOffsetOf,
+  patternStart,
   resetCycleOf,
   type LaneId,
   type LaneState,
+  type PassOrigin,
   type ResolvedNote,
   type ResolvedPattern,
   type SlotState,
@@ -20,30 +23,35 @@ function wrapWithin(value: number, length: number): number {
  * Where inside its window the lane has travelled to. Forward and reverse walk away from the
  * phase in either direction; pendulum folds the same count back on itself, so it turns at the
  * window's edges instead of jumping back to the start.
+ *
+ * The voice's phase adds to the lane's own offset before the window wraps, so each lane turns
+ * through its own length and a direction reads it as it reads any other offset.
  */
-function windowPosition(lane: LaneState, readIndex: number): number {
+function windowPosition(lane: LaneState, readIndex: number, phase: number): number {
   if (lane.length < 2) {
     return 0
   }
 
+  const offset = lane.offset + phase
+
   if (lane.direction === 'reverse') {
-    return wrapWithin(lane.offset - readIndex, lane.length)
+    return wrapWithin(offset - readIndex, lane.length)
   }
 
   if (lane.direction === 'pendulum') {
-    const bounce = wrapWithin(lane.offset + readIndex, lane.length * 2 - 2)
+    const bounce = wrapWithin(offset + readIndex, lane.length * 2 - 2)
     return bounce < lane.length ? bounce : lane.length * 2 - 2 - bounce
   }
 
-  return wrapWithin(lane.offset + readIndex, lane.length)
+  return wrapWithin(offset + readIndex, lane.length)
 }
 
-export function laneValueIndex(lane: LaneState, readIndex: number): number {
-  return lane.start + windowPosition(lane, readIndex)
+export function laneValueIndex(lane: LaneState, readIndex: number, phase = 0): number {
+  return lane.start + windowPosition(lane, readIndex, phase)
 }
 
-export function laneValueAt(lane: LaneState, readIndex: number): number {
-  return lane.values[laneValueIndex(lane, readIndex)]
+export function laneValueAt(lane: LaneState, readIndex: number, phase = 0): number {
+  return lane.values[laneValueIndex(lane, readIndex, phase)]
 }
 
 /**
@@ -51,12 +59,15 @@ export function laneValueAt(lane: LaneState, readIndex: number): number {
  * silent — so a step's length is emergent rather than stored, and gate is a fraction of
  * whatever length the holds produced.
  *
- * This resolves the pattern rather than a pass of it. The rate lane is the one thing that reads
- * differently from one turn to the next, and it only silences a note: the note still keeps its
- * place, its span and its turn at the per-note lanes, so everything resolved here is true of
- * every pass and the rate is carried on the note for the editor to mark.
+ * This resolves one pass of the pattern, taken from where that pass begins. A realigning voice
+ * plays the same pass every turn, so its origin is always the pattern's start; a free-running one
+ * has moved its lanes on, and reading it from the start would show it realigning when it is not.
+ *
+ * The rate lane is the one thing left that reads differently from one turn to the next, and it
+ * only silences a note: the note still keeps its place, its span and its turn at the per-note
+ * lanes, so it is carried on the note for the editor to mark rather than resolved here.
  */
-export function resolvePattern(voice: Voice): ResolvedPattern {
+export function resolvePattern(voice: Voice, origin: PassOrigin = patternStart): ResolvedPattern {
   const slots: SlotState[] = []
   const notes: ResolvedNote[] = []
   const noteIndexBySlot: number[] = []
@@ -65,10 +76,10 @@ export function resolvePattern(voice: Voice): ResolvedPattern {
   const cycle = resetCycleOf(voice)
 
   let currentNote: ResolvedNote | null = null
-  let noteIndex = 0
+  let noteIndex = origin.noteIndex
 
   for (let slot = 0; slot < voice.patternLength; ++slot) {
-    const position = lanePositionAt(voice, slot)
+    const position = lanePositionAt(voice, slot, origin)
 
     if (cycle > 0 && position === 0) {
       noteIndex = 0
@@ -120,15 +131,16 @@ export function laneReadIndexAt(
   voice: Voice,
   laneId: LaneId,
   pattern: ResolvedPattern,
-  slot: number
+  slot: number,
+  origin: PassOrigin = patternStart
 ): number {
   const definition = laneDefinition(laneId)
   const readIndex =
     definition.advance === 'note'
       ? (pattern.noteIndexBySlot[slot] ?? 0)
-      : lanePositionAt(voice, slot)
+      : lanePositionAt(voice, slot, origin)
 
-  return laneValueIndex(voice.lanes[laneId], readIndex)
+  return laneValueIndex(voice.lanes[laneId], readIndex, phaseOffsetOf(voice))
 }
 
 /**
@@ -141,12 +153,21 @@ function readLane(voice: Voice, laneId: LaneId, position: number, noteIndex: num
   const definition = laneDefinition(laneId)
   const readIndex = definition.advance === 'note' ? noteIndex : position
 
-  return laneOutput(laneValueAt(lane, readIndex), lane, definition)
+  return laneOutput(laneValueAt(lane, readIndex, phaseOffsetOf(voice)), lane, definition)
 }
 
-/// Where the lanes are within their reset cycle at a given slot of the pattern.
-export function lanePositionAt(voice: Voice, slot: number): number {
+/**
+ * How far the slot-advance lanes have walked by a given slot of the pass. A reset cycle wraps
+ * that walk; without one it simply carries on from wherever the pass began, which is what lets
+ * a lane shorter than the pattern land somewhere new on the next turn.
+ */
+export function lanePositionAt(
+  voice: Voice,
+  slot: number,
+  origin: PassOrigin = patternStart
+): number {
   const cycle = resetCycleOf(voice)
+  const position = origin.position + slot
 
-  return cycle > 0 ? slot % cycle : slot
+  return cycle > 0 ? position % cycle : position
 }

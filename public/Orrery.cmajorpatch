@@ -12,8 +12,8 @@
 
     "view":          {
                          "src": "main.js",
-                         "width": "1400px",
-                         "height": "820px",
+                         "width": 1400,
+                         "height": 820,
                          "resizable": true
                      }
 }
