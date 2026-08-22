@@ -180,7 +180,8 @@ export function usePatchSync() {
       steps: voice.patternLength,
       density: voice.density,
       hold: voice.holdAmount,
-      cycle: voice.resetCycleSteps
+      cycle: voice.resetCycleSteps,
+      phase: voice.phaseOffset
     })
   }
 
@@ -247,8 +248,16 @@ export function usePatchSync() {
     sendEverything()
   }
 
-  function onPlayheadChanged(position: { voice: number; slot: number }) {
-    store.setPlayheadSlot(position.voice, position.slot)
+  function onPlayheadChanged(playhead: {
+    voice: number
+    slot: number
+    position: number
+    noteIndex: number
+  }) {
+    store.setPlayhead(playhead.voice, playhead.slot, {
+      position: playhead.position,
+      noteIndex: playhead.noteIndex
+    })
   }
 
   function onSceneChanged(value: number) {

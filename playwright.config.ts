@@ -37,30 +37,15 @@ export default defineConfig({
     baseURL: 'http://localhost:5173',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
-
-    /* Only on CI systems run the tests headless */
-    headless: !!process.env.CI
+    trace: 'on-first-retry'
   },
 
-  /* Configure projects for major browsers */
+  /* The Cmajor host embeds a Chromium-based webview, so Chromium is the only engine to test. */
   projects: [
     {
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome']
-      }
-    },
-    {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox']
-      }
-    },
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari']
       }
     }
 
@@ -98,12 +83,9 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    /**
-     * Use the dev server by default for faster feedback loop.
-     * Use the preview server on CI for more realistic testing.
-     * Playwright will re-use the local server if there is already a dev-server running.
-     */
-    command: process.env.CI ? 'vite preview --port 5173' : 'vite dev',
+    /* The production build ships no page of its own - it is a module the host loads - so only the
+       dev server, with its mock patch connection, serves something these tests can visit. */
+    command: 'vite dev',
     port: 5173,
     reuseExistingServer: !process.env.CI
   }

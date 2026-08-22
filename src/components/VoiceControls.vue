@@ -7,8 +7,15 @@ import ActionIcon from '@/components/ActionIcon.vue'
 import RandomizeControl from '@/components/RandomizeControl.vue'
 
 const store = useSequencerStore()
-const { selectedVoice, selectedVoiceIndex, patternLength, density, holdAmount, resetCycleSteps } =
-  storeToRefs(store)
+const {
+  selectedVoice,
+  selectedVoiceIndex,
+  patternLength,
+  density,
+  holdAmount,
+  resetCycleSteps,
+  phaseOffset
+} = storeToRefs(store)
 </script>
 
 <template>
@@ -68,6 +75,17 @@ const { selectedVoice, selectedVoiceIndex, patternLength, density, holdAmount, r
           title="How often every lane snaps back to the start of its window, or Off to let them run"
         />
       </div>
+
+      <div class="field">
+        <span class="label">Phase</span>
+        <NumberField
+          v-model="phaseOffset"
+          :min="0"
+          :max="maxSteps - 1"
+          :step="1"
+          title="Turns every lane on by this many of its own steps, keeping the offsets they hold against each other"
+        />
+      </div>
     </div>
 
     <div class="actions">
@@ -115,10 +133,12 @@ const { selectedVoice, selectedVoiceIndex, patternLength, density, holdAmount, r
   gap: var(--space-7);
 }
 
+/// Names what the band is editing rather than being a value of its own, so it stays unaccented -
+/// only stronger than the field labels beside it.
 .scope {
   font-size: var(--text-label);
   letter-spacing: 0.02em;
-  color: var(--accent);
+  color: var(--text);
 }
 
 .field {

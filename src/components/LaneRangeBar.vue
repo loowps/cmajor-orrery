@@ -72,6 +72,12 @@ function onPointerUp(event: PointerEvent) {
   barElement.value?.releasePointerCapture(event.pointerId)
   dragMode.value = null
 }
+
+/// Bound on the bar rather than on each part of it, so the way out of a window narrowed down to
+/// a slot or two is the same gesture wherever the pointer happens to have landed.
+function openToWholePattern() {
+  emit('change', 0, slotCount)
+}
 </script>
 
 <template>
@@ -79,14 +85,16 @@ function onPointerUp(event: PointerEvent) {
     ref="barElement"
     class="range-bar"
     :class="{ dragging: dragMode !== null }"
+    title="Double-click to open the window back up to the whole pattern"
     @pointermove="onPointerMove"
     @pointerup="onPointerUp"
     @pointercancel="onPointerUp"
+    @dblclick="openToWholePattern"
   >
     <div
       class="window"
       :style="{ left: `${leftPercentage}%`, width: `${widthPercentage}%` }"
-      title="Drag to slide the window through the lane's values"
+      title="Drag to slide the window through the lane's values — double-click to open it fully"
       @pointerdown="onPointerDown('body', $event)"
     >
       <span class="readout">{{ start }} - {{ start + length }}</span>
@@ -95,14 +103,14 @@ function onPointerUp(event: PointerEvent) {
     <div
       class="handle start"
       :style="{ left: `${leftPercentage}%` }"
-      title="Drag to set the window start"
+      title="Drag to set the window start — double-click to open the window fully"
       @pointerdown="onPointerDown('start', $event)"
     />
 
     <div
       class="handle end"
       :style="{ left: `${leftPercentage + widthPercentage}%` }"
-      title="Drag to set the window end"
+      title="Drag to set the window end — double-click to open the window fully"
       @pointerdown="onPointerDown('end', $event)"
     />
   </div>

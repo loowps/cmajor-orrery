@@ -3,14 +3,7 @@ export const minPatternLength = 4
 export const sceneCount = 8
 
 export type LaneId =
-  | 'trigger'
-  | 'hold'
-  | 'rate'
-  | 'nudge'
-  | 'ratchet'
-  | 'pitch'
-  | 'velocity'
-  | 'gate'
+  'trigger' | 'hold' | 'rate' | 'nudge' | 'ratchet' | 'pitch' | 'velocity' | 'gate'
 
 /**
  * How far off its slot a note may be pushed, as a percentage of a 16th. Half a step either way is
@@ -105,11 +98,22 @@ export interface Voice {
    * as choosing how often it happens.
    */
   resetCycleSteps: number
+  /**
+   * Added to every lane's own offset rather than replacing it, and wrapped inside each lane's own
+   * window - so a five-long lane answers a phase of seven by turning two, and the voice stays
+   * polymetric while it is being dialled.
+   */
+  phaseOffset: number
   lanes: Record<LaneId, LaneState>
 }
 
 export function resetCycleOf(voice: Voice): number {
   return clamp(Math.round(voice.resetCycleSteps), 0, maxSteps)
+}
+
+/// A pattern saved before the control existed has no phase, which reads the same as none.
+export function phaseOffsetOf(voice: Voice): number {
+  return clamp(Math.round(voice.phaseOffset ?? 0), 0, maxSteps - 1)
 }
 
 /// Both controls read as "more" when turned up, but the resolver compares against a threshold.
@@ -132,9 +136,9 @@ export interface ResolvedNote {
   /// How many times it is struck inside its own length. One is a plain note.
   ratchet: number
   /**
-   * The share of passes the note sounds on. Which passes those are depends on how far the voice
-   * has turned, so the editor resolves the pattern rather than any one pass of it: a note below
-   * a hundred is shown as one that comes and goes.
+   * The share of passes the note sounds on. Whether this particular pass is one of them is the
+   * patch's to decide, so the note is marked as one that comes and goes rather than silenced
+   * here: below a hundred it is drawn as intermittent.
    */
   rate: number
 }
@@ -145,6 +149,20 @@ export interface ResolvedPattern {
   /// Which note owns each slot, so per-note lanes can be traced back to the value they read.
   noteIndexBySlot: number[]
 }
+
+/**
+ * Where a pass of the pattern begins: the lane position its first slot reads, and the note count
+ * the per-note lanes carry into it. A realigning voice starts every cycle from the same place, so
+ * only a free-running one has anything to carry - which is why the patch reports this rather than
+ * the editor deriving it from a pass number it cannot see.
+ */
+export interface PassOrigin {
+  position: number
+  noteIndex: number
+}
+
+/// Where the pattern is read from when nothing is playing, and the first pass of one that is.
+export const patternStart: PassOrigin = { position: 0, noteIndex: 0 }
 
 export const laneDefinitions: LaneDefinition[] = [
   {
@@ -345,6 +363,7 @@ export function createVoice(enabled: boolean): Voice {
     density: 0.58,
     holdAmount: 0.5,
     resetCycleSteps: 16,
+    phaseOffset: 0,
     lanes
   }
 }

@@ -3,7 +3,7 @@ import eslintPluginVue from 'eslint-plugin-vue'
 import typescriptEslint from 'typescript-eslint'
 
 export default typescriptEslint.config(
-  { ignores: ['*.d.ts', '**/coverage', '**/dist'] },
+  { ignores: ['*.d.ts', '**/coverage', '**/dist', '**/playwright-report'] },
   {
     extends: [
       eslint.configs.recommended,

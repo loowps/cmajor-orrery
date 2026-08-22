@@ -177,7 +177,19 @@ const {
 </template>
 
 <style scoped lang="scss">
+/* Tone lives in these rather than in a competing selector, so every state below is written once
+   and the marker variant follows it without another round of overrides. */
 .action-icon {
+  --on-fill: var(--accent);
+  --on-fill-hover: var(--accent-bright);
+  --on-ink: var(--accent-ink);
+
+  &.marker {
+    --on-fill: var(--marker);
+    --on-fill-hover: var(--marker-bright);
+    --on-ink: var(--marker-ink);
+  }
+
   width: var(--control-size);
   height: var(--control-size);
   flex: none;
@@ -215,27 +227,35 @@ const {
     color: var(--text);
   }
 
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-
-  &:active {
+  &:active:not(:disabled) {
     background: var(--accent-dim);
     border-color: var(--accent-dim);
     color: var(--accent-ink);
   }
 
   &.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--on-fill);
+    border-color: var(--on-fill);
+    color: var(--on-ink);
+  }
+
+  /* An on button brightens under the pointer instead of dropping back to the inert fill, so the
+     hover answers the pointer without hiding what the button is. */
+  &.active:hover:not(:disabled) {
+    background: var(--on-fill-hover);
+    border-color: var(--on-fill-hover);
+    color: var(--on-ink);
+  }
+
+  &.active:active:not(:disabled) {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
     color: var(--accent-ink);
   }
 
-  &.marker.active {
-    background: var(--marker);
-    border-color: var(--marker);
-    color: var(--marker-ink);
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
   }
 }
 </style>

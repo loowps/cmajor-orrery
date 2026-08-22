@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useSequencerStore } from '@/stores/sequencer'
-import { clamp, maxSteps, minPatternLength } from '@/models/sequencer.model'
+import { clamp, maxSteps, minPatternLength, phaseOffsetOf } from '@/models/sequencer.model'
 import { resolvePattern } from '@/models/pattern-resolver'
 import NumberField from '@/components/NumberField.vue'
 import VoiceRangeCell from '@/components/VoiceRangeCell.vue'
@@ -40,6 +40,11 @@ const resetCycleSteps = computed({
   set: (value) => {
     voice.value.resetCycleSteps = clamp(Math.round(value), 0, maxSteps)
   }
+})
+
+const phaseOffset = computed({
+  get: () => phaseOffsetOf(voice.value),
+  set: (value) => store.setVoicePhaseOffset(voiceIndex, value)
 })
 </script>
 
@@ -90,6 +95,16 @@ const resetCycleSteps = computed({
       :step="1"
       zero-label="Off"
       title="How often every lane snaps back to the start of its window, or Off to let them run"
+    />
+  </div>
+
+  <div class="cell">
+    <NumberField
+      v-model="phaseOffset"
+      :min="0"
+      :max="maxSteps - 1"
+      :step="1"
+      title="Turns every lane on by this many of its own steps, keeping the offsets they hold against each other"
     />
   </div>
 

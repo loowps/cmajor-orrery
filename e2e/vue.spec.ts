@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('visits the app root url with included patch title', async ({ page }) => {
+test('visits the app root url with the patch signed in its footer', async ({ page }) => {
   await page.goto('/')
-  await expect(page.locator('header')).toContainText('Orrery')
+  await expect(page.locator('footer')).toContainText('Orrery')
 })

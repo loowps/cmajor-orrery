@@ -24,6 +24,7 @@ const {
   triggerThreshold,
   holdThreshold,
   playheadSlot,
+  playheadOrigin,
   resolvedPattern,
   focusedLaneId
 } = storeToRefs(store)
@@ -35,14 +36,11 @@ const isFocused = computed(() => focusedLaneId.value === laneId)
 const isCollapsed = computed(() => store.isLaneCollapsed(laneId))
 
 /**
- * One lane takes half the available height when focused; otherwise every lane shares it. A folded
- * lane asks for none of it and takes the height of its own name instead, so folding two away is
- * what gives the rest room to be drawn in.
+ * Every lane shares the available height, except the two that ask for a set amount instead: a
+ * folded lane takes the height of its own name, and one opened for editing takes the editing
+ * height. Both give up their share of the stack, which is what gives the rest room to be drawn in.
  */
-const growth = computed(() => {
-  if (isCollapsed.value) return 0
-  return isFocused.value ? 4 : 1
-})
+const growth = computed(() => (isCollapsed.value || isFocused.value ? 0 : 1))
 
 /**
  * Shared by the fold's two halves - the share of the stack the lane gives up, and the fade that
@@ -114,7 +112,13 @@ const cells = computed<LaneCell[]>(() =>
 const playingCellIndex = computed(() =>
   playheadSlot.value < 0
     ? -1
-    : laneReadIndexAt(store.selectedVoice, laneId, resolvedPattern.value, playheadSlot.value)
+    : laneReadIndexAt(
+        store.selectedVoice,
+        laneId,
+        resolvedPattern.value,
+        playheadSlot.value,
+        playheadOrigin.value
+      )
 )
 
 function emphasisFor(cell: LaneCell) {
@@ -384,14 +388,20 @@ const paintReadout = computed(() => {
   overflow: hidden;
   /* Folding a lane is the other lanes growing, so its share of the stack is the honest thing to
      animate - and the floor moves with it, or unfolding would snap back up to the open minimum
-     before it had started. Both are layout properties, which is why this is kept short. */
+     before it had started. The basis carries the same job for a lane asking for a set height.
+     All three are layout properties, which is why this is kept short. */
   transition:
     flex-grow var(--fold-duration, 120ms) ease,
+    flex-basis var(--fold-duration, 120ms) ease,
     min-height var(--fold-duration, 120ms) ease;
 }
 
 /// The lane's own surface is its boundary, so the focus ring belongs to the whole row.
+/// Opened for editing it asks for a set height rather than a share of the stack, so the track is
+/// the same size in a short window as in a tall one, and the stack scrolls if that leaves no room.
 .lane.focused {
+  flex-shrink: 0;
+  flex-basis: var(--lane-focused-height);
   box-shadow: inset 0 0 0 1px var(--accent-dim);
 }
 

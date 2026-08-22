@@ -124,12 +124,17 @@ processor Orrery [[ main ]]
         float32 density;
         float32 hold;
         int32 cycle;
+        int32 phase;
     }
 
     struct Playhead
     {
         int32 voice;
         int32 slot;
+        /// Where the pass the slot belongs to began, so the editor can read the lanes at the
+        /// same place the patch is reading them rather than always at the first pass.
+        int32 position;
+        int32 noteIndex;
     }
 
     //==============================================================================
@@ -186,8 +191,14 @@ processor Orrery [[ main ]]
     /// this is the only thing about a slot that answers differently from one pass to the next.
     bool[totalSlots]    slotSounds;
 
+    /// Only a free-running voice carries this: a realigning one counts back instead.
     int32[voiceCount]   passNoteStart;
     int32[voiceCount]   passTriggerCount;
+
+    /// What the pass now in the slot arrays was resolved from, kept so the editor can be told
+    /// where the lanes are rather than assuming the pattern's first pass.
+    int32[voiceCount]   passOriginPosition;
+    int32[voiceCount]   passOriginNote;
 
     bool[voiceCount]    voiceEnabled;
     bool[voiceCount]    notePlaying;
@@ -217,6 +228,8 @@ processor Orrery [[ main ]]
     float32[voiceCount] voiceHoldThreshold;
     /// Steps between realignments of every lane, or zero to let them free-run.
     int32[voiceCount]   voiceResetCycle;
+    /// Added to every lane's own offset, so one control turns the whole voice at once.
+    int32[voiceCount]   voicePhase;
     bool[voiceCount]    voiceNeedsRebuild;
 
     bool[totalVoices]    sceneVoiceOn;
@@ -224,6 +237,7 @@ processor Orrery [[ main ]]
     float32[totalVoices] sceneTriggerThreshold;
     float32[totalVoices] sceneHoldThreshold;
     int32[totalVoices]   sceneResetCycle;
+    int32[totalVoices]   scenePhase;
 
     int32 currentScene;
 
@@ -236,9 +250,6 @@ processor Orrery [[ main ]]
 
     /// Bit per voice, set by the editor. Zero means nothing is soloed and the scene decides.
     int32 soloMask;
-
-    /// Absolute step count at the start of the current pass, so lanes can free-run across it.
-    int32[voiceCount]   passStartStep;
 
     int64[voiceCount]   voiceCurrentPass;
     /// Where the playhead is, which is the slot the voice is metrically in rather than the note
@@ -291,6 +302,7 @@ processor Orrery [[ main ]]
         sceneTriggerThreshold[s] = 1.0f - update.density;
         sceneHoldThreshold[s]    = 1.0f - update.hold;
         sceneResetCycle[s]       = clamp (update.cycle, 0, maxSteps);
+        scenePhase[s]            = clamp (update.phase, 0, maxSteps - 1);
 
         // Editing the scene that is playing has to reach the live copy the sequencer reads.
         if (update.scene == currentScene)
@@ -423,6 +435,7 @@ processor Orrery [[ main ]]
         voiceTriggerThreshold[v] = sceneTriggerThreshold[s];
         voiceHoldThreshold[v]    = sceneHoldThreshold[s];
         voiceResetCycle[v]       = sceneResetCycle[s];
+        voicePhase[v]            = scenePhase[s];
         voiceEnabled[v]          = audibleInCurrentScene (voice);
         voiceNeedsRebuild[v]     = true;
 
@@ -480,8 +493,11 @@ processor Orrery [[ main ]]
         Where inside its window the lane has travelled to. Forward and reverse walk away from the
         phase in either direction; pendulum folds the same count back on itself, so it turns at
         the window's edges instead of jumping back to the start.
+
+        The voice's phase adds to the lane's own offset before the window wraps, so each lane turns
+        through its own length and a direction reads it as it reads any other offset.
     */
-    int32 windowPosition (int32 lane, int32 readIndex)
+    int32 windowPosition (int32 lane, int32 readIndex, int32 phase)
     {
         let here = wrap<totalLanes> (lane);
         let length = windowLength[here];
@@ -490,7 +506,7 @@ processor Orrery [[ main ]]
         if (length < 2)
             return 0;
 
-        let offset = windowOffset[here];
+        let offset = windowOffset[here] + phase;
         let direction = windowDirection[here];
 
         if (direction == directionReverse)
@@ -516,7 +532,8 @@ processor Orrery [[ main ]]
     {
         let which = laneIndex (currentScene, voice, lane);
         let here = wrap<totalLanes> (which);
-        let index = windowStart[here] + windowPosition (which, readIndex);
+        let index = windowStart[here] + windowPosition (which, readIndex,
+                                                        voicePhase[wrap<voiceCount> (voice)]);
         let base = laneBase (currentScene, voice, lane);
         let normalised = stepValues[wrap<totalValues> (base + index)];
 
@@ -543,6 +560,42 @@ processor Orrery [[ main ]]
     }
 
     /**
+        How far into its reset cycle a pass begins. Worked out from the pass number rather than
+        carried across the boundary, because a cycle may be longer than the pass and so has to
+        remember which turn it is on - which means a transport jump lands in the same phase the
+        music would have reached playing through.
+    */
+    int32 passStartPosition (int32 voice)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        // Never located, or located before the timeline's zero: the pattern starts where it starts.
+        let pass = voiceCurrentPass[v] < 0 ? int64 (0) : voiceCurrentPass[v];
+        let stepped = pass * int64 (voicePatternLength[v]);
+        let cycle = voiceResetCycle[v];
+
+        return int32 (cycle > 0 ? stepped % int64 (cycle) : stepped);
+    }
+
+    /**
+        The note count a pass starts from. The per-note lanes advance by notes rather than steps,
+        so no arithmetic answers this - but the trigger lane already holds what it takes to count
+        them, and at most one cycle of them, which keeps this cheap enough to do on every pass.
+    */
+    int32 notesSinceRealignment (int32 voice, int32 startPosition)
+    {
+        let v = wrap<voiceCount> (voice);
+
+        int32 notes = 0;
+
+        for (int32 position = 0; position < startPosition; ++position)
+            if (laneOutput (voice, laneTrigger, position) >= voiceTriggerThreshold[v])
+                ++notes;
+
+        return notes;
+    }
+
+    /**
         Resolves one pass of a voice's pattern. A hold can only be recognised after the note it
         extends has already been placed, so each hold reaches back and lengthens the trigger
         that owns it.
@@ -551,18 +604,26 @@ processor Orrery [[ main ]]
     {
         let v = wrap<voiceCount> (voice);
 
-        int32 noteIndex = passNoteStart[v];
-        int32 triggerSlot = -1;
-        int32 triggers = 0;
-
         // Zero means the lanes never realign and each free-runs at its own length.
         let cycle = voiceResetCycle[v];
+        let startPosition = passStartPosition (voice);
+
+        // Worked out rather than remembered, so a rebuild mid-edit and a jump both answer the
+        // same as playing into the pass would have.
+        int32 noteIndex = cycle > 0 ? notesSinceRealignment (voice, startPosition)
+                                    : passNoteStart[v];
+
+        passOriginPosition[v] = startPosition;
+        passOriginNote[v]     = noteIndex;
+
+        int32 triggerSlot = -1;
+        int32 triggers = 0;
 
         for (int32 slot = 0; slot < voicePatternLength[v]; ++slot)
         {
             let here = wrap<totalSlots> (voice * maxSteps + slot);
 
-            int32 position = passStartStep[v] + slot;
+            int32 position = startPosition + slot;
 
             if (cycle > 0)
             {
@@ -619,22 +680,17 @@ processor Orrery [[ main ]]
         voiceNeedsRebuild[v] = false;
     }
 
-    /// Carried over the pass boundary before the next pass is resolved, because where the lanes
-    /// have got to is what the resolving reads.
+    /**
+        Carried over the pass boundary before the next pass is resolved, because where the lanes
+        have got to is what the resolving reads. Only a free-running voice has anything to carry,
+        so a realigning one holds nothing that a jump or an edit could leave stale.
+    */
     void advancePassCounters (int32 voice)
     {
         let v = wrap<voiceCount> (voice);
 
-        if (voiceResetCycle[v] > 0)
-        {
-            passNoteStart[v] = 0;
-            passStartStep[v] = 0;
-        }
-        else
-        {
+        if (voiceResetCycle[v] == 0)
             passNoteStart[v] += passTriggerCount[v];
-            passStartStep[v] += voicePatternLength[v];
-        }
     }
 
     //==============================================================================
@@ -772,6 +828,7 @@ processor Orrery [[ main ]]
                 sceneTriggerThreshold[s] = 0.42f;
                 sceneHoldThreshold[s]    = 0.5f;
                 sceneResetCycle[s]       = 16;
+                scenePhase[s]            = 0;
             }
         }
 
@@ -817,6 +874,10 @@ processor Orrery [[ main ]]
     {
         let v = wrap<voiceCount> (voice);
 
+        // A free-running voice has nothing to count back from, so a jump starts its per-note lanes
+        // afresh rather than resuming a count belonging to wherever the transport used to be.
+        passNoteStart[v] = 0;
+
         openPass (voice, resolvingPassOf (voice));
         voiceCurrentSlot[v] = -1;
         buildVoice (voice);
@@ -838,7 +899,7 @@ processor Orrery [[ main ]]
         if (slot != voiceCurrentSlot[v])
         {
             voiceCurrentSlot[v] = slot;
-            playheadOut <- Playhead (voice, slot);
+            playheadOut <- Playhead (voice, slot, passOriginPosition[v], passOriginNote[v]);
         }
     }
 
