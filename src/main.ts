@@ -24,10 +24,8 @@ class CmajApp extends HTMLElement {
   }
 }
 
-window.customElements.define(cmajViewElementTag, CmajApp)
-
 if (!customElements.get(cmajViewElementTag)) {
-  customElements.define(cmajViewElementTag, CmajApp)
+  window.customElements.define(cmajViewElementTag, CmajApp)
 }
 
 export default function createPatchView(patchConnection: PatchConnection) {

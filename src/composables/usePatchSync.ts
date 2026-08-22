@@ -1,4 +1,4 @@
-import { inject, onBeforeUnmount, onMounted, watch } from 'vue'
+import { inject, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useSequencerStore } from '@/stores/sequencer'
 import type { PatchConnection } from '@/models/patch-connection.model'
@@ -13,6 +13,9 @@ import {
 } from '@/models/sequencer.model'
 
 const storedStateDebounceMs = 400
+
+/// Past this many cells, resending the lane costs less than addressing each one of them.
+const maxStepEdits = 8
 
 /// Direction travels as its wire index, so a sent lane is comparable field by field.
 interface SentLane {
@@ -40,6 +43,78 @@ export function usePatchSync() {
   let storedStateTimer: ReturnType<typeof setTimeout> | undefined
   let isApplyingStoredState = false
 
+  function sendLaneValues(
+    sceneIndex: number,
+    voiceIndex: number,
+    laneIndex: number,
+    values: number[]
+  ) {
+    patchConnection?.sendEventOrValue(PatchConnectionEndpoint.LaneValues, {
+      scene: sceneIndex,
+      voice: voiceIndex,
+      lane: laneIndex,
+      values
+    })
+  }
+
+  function sendStepEdit(
+    sceneIndex: number,
+    voiceIndex: number,
+    laneIndex: number,
+    index: number,
+    value: number
+  ) {
+    patchConnection?.sendEventOrValue(PatchConnectionEndpoint.StepEdit, {
+      scene: sceneIndex,
+      voice: voiceIndex,
+      lane: laneIndex,
+      index,
+      value
+    })
+  }
+
+  function indicesChangedSince(sent: number[], values: number[]): number[] {
+    const changed: number[] = []
+
+    for (let index = 0; index < values.length; ++index) {
+      if (sent[index] !== values[index]) {
+        changed.push(index)
+      }
+    }
+
+    return changed
+  }
+
+  /**
+   * A drag moves a cell or two at a time, so a small edit travels as the cells that actually
+   * moved rather than as the whole lane behind them. A lane with nothing sent yet - the first
+   * send, or the first after a stored pattern arrives - has nothing to compare against, so it
+   * goes whole.
+   */
+  function sendChangedValues(
+    sceneIndex: number,
+    voiceIndex: number,
+    laneIndex: number,
+    sent: SentLane | undefined,
+    values: number[]
+  ) {
+    if (!sent) {
+      sendLaneValues(sceneIndex, voiceIndex, laneIndex, values)
+      return
+    }
+
+    const changed = indicesChangedSince(sent.values, values)
+
+    if (changed.length > maxStepEdits) {
+      sendLaneValues(sceneIndex, voiceIndex, laneIndex, values)
+      return
+    }
+
+    for (const index of changed) {
+      sendStepEdit(sceneIndex, voiceIndex, laneIndex, index, values[index])
+    }
+  }
+
   function sendLaneIfChanged(
     sceneIndex: number,
     voiceIndex: number,
@@ -49,14 +124,7 @@ export function usePatchSync() {
     const key = `${sceneIndex}:${voiceIndex}:${laneIndex}`
     const sent = sentLanes.get(key)
 
-    if (!sent || sent.values.some((value, index) => value !== lane.values[index])) {
-      patchConnection?.sendEventOrValue(PatchConnectionEndpoint.LaneValues, {
-        scene: sceneIndex,
-        voice: voiceIndex,
-        lane: laneIndex,
-        values: lane.values
-      })
-    }
+    sendChangedValues(sceneIndex, voiceIndex, laneIndex, sent, lane.values)
 
     const settingsChanged =
       !sent ||
@@ -169,7 +237,12 @@ export function usePatchSync() {
 
     isApplyingStoredState = true
     store.applySnapshot(message.value)
-    isApplyingStoredState = false
+
+    // The watcher runs on the next tick rather than on the mutation, so the flag has to outlive
+    // this call - otherwise the load reads as an edit and is written straight back to the host.
+    nextTick(() => {
+      isApplyingStoredState = false
+    })
 
     sendEverything()
   }
