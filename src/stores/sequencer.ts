@@ -192,9 +192,21 @@ export const useSequencerStore = defineStore('sequencer', () => {
   const selectedVoice = computed(() => voices.value[selectedVoiceIndex.value])
 
   const playheadSlot = computed(() => playheadSlots.value[selectedVoiceIndex.value] ?? -1)
-  const playheadOrigin = computed(
-    () => playheadOrigins.value[selectedVoiceIndex.value] ?? patternStart
-  )
+
+  /**
+   * The origin describes the voice the patch is playing, which is the sounding scene copy of it.
+   * A scene being edited while another sounds has not turned its lanes at all, so it is read from
+   * the pattern start rather than from wherever the playing scene has carried its own lanes to.
+   */
+  function passOriginOf(voiceIndex: number): PassOrigin {
+    if (editSceneIndex.value !== soundingSceneIndex.value) {
+      return patternStart
+    }
+
+    return playheadOrigins.value[voiceIndex] ?? patternStart
+  }
+
+  const playheadOrigin = computed(() => passOriginOf(selectedVoiceIndex.value))
 
   const resolvedPattern = computed(() => resolvePattern(selectedVoice.value, playheadOrigin.value))
   const triggerThreshold = computed(() => triggerThresholdOf(selectedVoice.value))
@@ -434,8 +446,18 @@ export const useSequencerStore = defineStore('sequencer', () => {
   }
 
   function setPlayhead(voiceIndex: number, slot: number, origin: PassOrigin) {
-    if (voiceIndex >= 0 && voiceIndex < voiceCount) {
-      playheadSlots.value[voiceIndex] = slot
+    if (voiceIndex < 0 || voiceIndex >= voiceCount) {
+      return
+    }
+
+    playheadSlots.value[voiceIndex] = slot
+
+    /// Written only where it has actually moved: the origin is what the pattern is resolved from,
+    /// so taking the report as it arrives would resolve every lane again on every step of a voice
+    /// that has not turned over.
+    const current = playheadOrigins.value[voiceIndex] ?? patternStart
+
+    if (current.position !== origin.position || current.noteIndex !== origin.noteIndex) {
       playheadOrigins.value[voiceIndex] = origin
     }
   }
@@ -521,6 +543,7 @@ export const useSequencerStore = defineStore('sequencer', () => {
     playheadSlot,
     playheadOrigin,
     playheadSlots,
+    passOriginOf,
     focusedLaneId,
     toggleLaneFocus,
     collapsedLaneIds,

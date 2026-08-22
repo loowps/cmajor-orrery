@@ -14,7 +14,9 @@ const store = useSequencerStore()
 const voice = computed(() => store.voices[voiceIndex])
 const isSelected = computed(() => store.selectedVoiceIndex === voiceIndex)
 const isAudible = computed(() => store.isVoiceAudible(voiceIndex))
-const noteCount = computed(() => resolvePattern(voice.value).notes.length)
+const noteCount = computed(
+  () => resolvePattern(voice.value, store.passOriginOf(voiceIndex)).notes.length
+)
 
 const steps = computed({
   get: () => voice.value.patternLength,

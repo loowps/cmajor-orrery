@@ -12,7 +12,7 @@ const voiceSummaries = computed(() =>
     index,
     enabled: store.isVoiceAudible(index),
     steps: voice.patternLength,
-    noteCount: resolvePattern(voice).notes.length
+    noteCount: resolvePattern(voice, store.passOriginOf(index)).notes.length
   }))
 )
 </script>
