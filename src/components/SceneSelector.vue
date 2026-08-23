@@ -99,32 +99,32 @@ const {
   place-items: center;
   padding: 0;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   color: var(--text);
+  font-family: var(--font-mono);
   font-size: var(--text-label);
   font-variant-numeric: tabular-nums;
   line-height: 1;
   cursor: pointer;
   transition:
     background-color var(--dur-control),
-    border-color var(--dur-control),
     color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);
-    border-color: var(--border-strong);
     color: var(--text);
   }
 
   &.editing {
     background: var(--accent);
-    border-color: var(--accent);
     color: var(--accent-ink);
   }
 }
 
 /// Always drawn, so every slot keeps the same silhouette and only its brightness says who plays.
+/// Brass rather than the marker tone: blue is the playhead's alone, and a slot that is sounding
+/// is the patch doing something rather than the editor listening in.
 .state {
   position: absolute;
   left: var(--space-3);
@@ -132,8 +132,8 @@ const {
   bottom: 3px;
   height: 2px;
   border-radius: 2px;
-  background: var(--marker);
-  opacity: 0.22;
+  background: var(--accent);
+  opacity: 0.18;
 }
 
 /// Half lit while an audition is sounding elsewhere, so the host's standing choice is still

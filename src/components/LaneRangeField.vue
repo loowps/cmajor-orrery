@@ -170,41 +170,62 @@ const typedHigh = computed({
 </template>
 
 <style scoped lang="scss">
-/// Fields and rail share one frame, so the pair reads as a single range control.
+/**
+ * The pair used to sit in a well of its own, which made two limits above one fill read as a level
+ * starting at zero. Bare, the numbers are faint mono limits standing at the two ends of a scale
+ * and the brass between them is the span they bound, so the control says range, not amount.
+ */
 .range-field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--bg-control);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-
-  &:hover {
-    border-color: var(--border-strong);
-  }
+  gap: var(--space-3);
 }
 
 .values {
   display: flex;
+  align-items: baseline;
 }
 
+/// Limits rather than values: they mark the ends of the scale, so they carry no well of their own
+/// and only the pointer finding them says they can be taken hold of.
 .values :deep(.number-field) {
   flex: 1;
   width: auto;
-  height: 18px;
+  height: auto;
   background: transparent;
-  border-color: transparent;
+  border-radius: 0;
+  overflow: visible;
 
   &:hover {
-    background: var(--bg-control-hover);
+    background: transparent;
+  }
+
+  &.dragging,
+  &.editing {
+    box-shadow: none;
+  }
+
+  .value,
+  input {
+    padding: 0;
+    line-height: 1.1;
+    font-size: var(--text-small);
+    letter-spacing: 0.04em;
+    color: var(--text-dim);
+    transition: color var(--dur-control);
+  }
+
+  &:hover .value,
+  &.dragging .value,
+  &.editing input {
+    color: var(--text);
   }
 }
 
 .rail {
   position: relative;
   height: 6px;
-  background: var(--bg-sunken);
+  background: var(--range-track);
   border-radius: var(--radius-sm);
   touch-action: none;
   user-select: none;
@@ -219,20 +240,18 @@ const typedHigh = computed({
   top: 0;
   bottom: 0;
   min-width: 2px;
-  background: var(--accent-dim);
+  background: var(--accent);
   border-radius: var(--radius-sm);
   cursor: grab;
-  transition: background-color var(--dur-control);
-
-  &:hover {
-    background: var(--accent);
-  }
 }
 
+/// The span's own ends are what say where the range stops, so each edge is a hit area that draws
+/// a mark only once the pointer has found it. Six lanes carrying two permanent handles apiece
+/// would put more chrome down the header column than the values they bound.
 .handle {
   position: absolute;
-  top: -1px;
-  bottom: -1px;
+  top: -2px;
+  bottom: -2px;
   width: 10px;
   margin-left: -5px;
   cursor: ew-resize;
@@ -244,12 +263,13 @@ const typedHigh = computed({
     bottom: 0;
     left: 3.5px;
     width: 3px;
-    background: var(--accent);
-    border-radius: 2px;
+    background: transparent;
+    border-radius: 1px;
+    transition: background-color var(--dur-control);
   }
 
   &:hover::after {
-    background: var(--accent-bright);
+    background: var(--text);
   }
 }
 </style>

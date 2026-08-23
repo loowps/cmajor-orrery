@@ -19,15 +19,27 @@ const placedNotes = computed(() =>
     const interval = note.span / hits
     const onset = note.startSlot + note.nudge / 100
 
-    return Array.from({ length: hits }, (_unused, hit) => ({
-      key: `${note.startSlot}:${hit}`,
-      label: hit === 0 ? `${noteNames[note.pitch % 12]}${Math.floor(note.pitch / 12) - 1}` : '',
-      left: ((onset + hit * interval) / patternLength.value) * 100,
-      width: ((interval * (note.gate / 100)) / patternLength.value) * 100,
-      opacity: 0.5 + (note.velocity / 127) * 0.5,
-      /// Weight already says velocity, so a note that only comes round sometimes is drawn hollow.
-      isConditional: note.rate < 100
-    }))
+    return Array.from({ length: hits }, (_unused, hit) => {
+      const width = ((interval * (note.gate / 100)) / patternLength.value) * 100
+
+      return {
+        key: `${note.startSlot}:${hit}`,
+        /**
+         * Dropped rather than clipped: a strike too short to hold its name is better read as the
+         * mark it is than as a letter cut in half. Measured against the strip rather than in
+         * slots, because the strip is the same width whatever the pattern divides it into.
+         */
+        label:
+          hit === 0 && width >= 2.4
+            ? `${noteNames[note.pitch % 12]}${Math.floor(note.pitch / 12) - 1}`
+            : '',
+        left: ((onset + hit * interval) / patternLength.value) * 100,
+        width,
+        opacity: 0.5 + (note.velocity / 127) * 0.5,
+        /// Weight already says velocity, so a note that only comes round sometimes is drawn hollow.
+        isConditional: note.rate < 100
+      }
+    })
   })
 )
 
@@ -69,11 +81,7 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
         <span v-if="note.label">{{ note.label }}</span>
       </div>
 
-      <div
-        v-if="playheadSlot >= 0"
-        class="playhead"
-        :style="{ left: `${playheadPercentage}%`, width: `${100 / patternLength}%` }"
-      />
+      <div v-if="playheadSlot >= 0" class="playhead" :style="{ left: `${playheadPercentage}%` }" />
     </div>
   </div>
 </template>
@@ -101,13 +109,18 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   color: var(--text-dim);
 }
 
+/**
+ * The one thing in the window that is read rather than drawn in, so it is the one thing that sits
+ * in a sunken track: the notes are held by it instead of floating on the band. Its ticks are what
+ * lets a note's start be seen to land on a step.
+ */
 .strip {
   flex: 1;
   min-width: 0;
   position: relative;
-  height: 28px;
+  height: 20px;
   background: var(--bg-sunken);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
@@ -116,10 +129,10 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--bg-cell);
+  background: var(--bg-panel);
 
   &.bar {
-    background: var(--border-strong);
+    background: var(--border);
   }
 }
 
@@ -136,7 +149,8 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
 
   span {
     padding-left: var(--space-2);
-    font-size: var(--text-micro);
+    font-family: var(--font-mono);
+    font-size: var(--text-small);
     color: var(--accent-ink);
     white-space: nowrap;
   }
@@ -152,12 +166,14 @@ const playheadPercentage = computed(() => (playheadSlot.value / patternLength.va
   }
 }
 
+/// The strip is continuous time rather than a row of steps, so the playhead is the edge itself -
+/// a column would claim a width the notes underneath it do not share.
 .playhead {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--marker-wash);
-  border-left: 1px solid var(--marker);
+  width: 1px;
+  background: var(--marker);
   pointer-events: none;
 }
 </style>
