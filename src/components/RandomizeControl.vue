@@ -43,17 +43,15 @@ const percentage = computed({
   align-items: center;
   flex: none;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
-
-  &:hover {
-    border-color: var(--border-strong);
-  }
 }
 
+/// Inset top and bottom, so the pair reads as one well parted rather than as two wells butted up.
 .divider {
   width: 1px;
   align-self: stretch;
+  margin: var(--space-3) 0;
   background: var(--border);
 }
 
@@ -66,12 +64,10 @@ const percentage = computed({
 /// Borderless inside the frame, so only the hover fill marks it as the half you can drag.
 .randomize :deep(.number-field) {
   width: 44px;
-  border-color: transparent;
   border-radius: 0 var(--radius) var(--radius) 0;
   background: transparent;
 
   &:hover {
-    border-color: transparent;
     background: var(--bg-control-hover);
   }
 }

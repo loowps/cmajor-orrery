@@ -23,6 +23,16 @@ let startWhenGrabbed = 0
 const leftPercentage = computed(() => (start / slotCount) * 100)
 const widthPercentage = computed(() => (length / slotCount) * 100)
 
+/// A window covering the whole pattern excludes nothing, so it has no bounds worth printing.
+const isOpen = computed(() => length >= slotCount)
+
+/**
+ * The numerals are dropped rather than clipped once the span is too short to hold them. Measured
+ * as a share of the bar rather than in steps, because the bar is the same width whatever the
+ * pattern length divides it into.
+ */
+const showsBounds = computed(() => !isOpen.value && length / slotCount >= 0.05)
+
 function boundaryFrom(event: PointerEvent): number {
   const bounds = barElement.value!.getBoundingClientRect()
   return clamp(Math.round(((event.clientX - bounds.left) / bounds.width) * slotCount), 0, slotCount)
@@ -97,7 +107,10 @@ function openToWholePattern() {
       title="Drag to slide the window through the lane's values — double-click to open it fully"
       @pointerdown="onPointerDown('body', $event)"
     >
-      <span class="readout">{{ start }} - {{ start + length }}</span>
+      <template v-if="showsBounds">
+        <span class="bound from">{{ start + 1 }}</span>
+        <span class="bound to">{{ start + length }}</span>
+      </template>
     </div>
 
     <div
@@ -119,9 +132,9 @@ function openToWholePattern() {
 <style scoped lang="scss">
 .range-bar {
   position: relative;
-  height: 13px;
-  background: var(--bg-sunken);
-  border-radius: var(--radius);
+  height: 8px;
+  background: var(--range-track);
+  border-radius: var(--radius-sm);
   touch-action: none;
   user-select: none;
 
@@ -130,37 +143,65 @@ function openToWholePattern() {
   }
 }
 
+/**
+ * The window is a control rather than a value, so it takes the grey ramp and leaves brass to the
+ * bars above it. Its own numerals ride the two ends of the span, which is where the crushed pair
+ * printed inside it was trying to go.
+ */
 .window {
   position: absolute;
   top: 0;
   bottom: 0;
-  background: var(--accent-dim);
-  border-radius: var(--radius);
+  background: var(--window-fill);
+  border-radius: var(--radius-sm);
   cursor: grab;
   overflow: hidden;
   transition: background-color var(--dur-control);
 
   &:hover {
-    background: var(--accent);
+    background: var(--border-strong);
   }
 }
 
-.readout {
+/**
+ * The span itself already says which slots the window covers, so the exact pair is an answer to
+ * a question only asked of the lane being worked on. Held rather than removed, so reading them
+ * costs no jump.
+ */
+.bound {
   position: absolute;
-  left: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+  top: -1px;
+  opacity: 0;
+  transition: opacity var(--dur-control);
+  font-family: var(--font-mono);
   font-size: var(--text-micro);
+  line-height: 10px;
   font-variant-numeric: tabular-nums;
-  color: var(--accent-ink);
+  color: var(--text);
   white-space: nowrap;
   pointer-events: none;
 }
 
+.bound.from {
+  left: 5px;
+}
+
+.bound.to {
+  right: 5px;
+}
+
+/// Dragging keeps them up even when the pointer runs off the bar, which capture lets it do.
+.range-bar:hover .bound,
+.range-bar.dragging .bound {
+  opacity: 1;
+}
+
+/// The span itself is what you drag, so the edges are a hit area that only draws a mark once the
+/// pointer has found it - two permanent handles would out-weigh the 8px bar they sit on.
 .handle {
   position: absolute;
-  top: -1px;
-  bottom: -1px;
+  top: -2px;
+  bottom: -2px;
   width: 11px;
   margin-left: -5.5px;
   cursor: ew-resize;
@@ -172,12 +213,13 @@ function openToWholePattern() {
     bottom: 0;
     left: 4px;
     width: 3px;
-    background: var(--accent);
-    border-radius: 2px;
+    background: transparent;
+    border-radius: 1px;
+    transition: background-color var(--dur-control);
   }
 
   &:hover::after {
-    background: var(--accent-bright);
+    background: var(--text);
   }
 }
 </style>

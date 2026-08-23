@@ -88,6 +88,8 @@ interface LaneCell {
   /// Drawn from zero to the value, so a negative one hangs below the line instead of standing on it.
   barBottom: number
   barHeight: number
+  /// Which end of the bar the cap belongs on: the value's end, never the zero line's.
+  hangsBelowZero: boolean
 }
 
 const cells = computed<LaneCell[]>(() =>
@@ -103,7 +105,8 @@ const cells = computed<LaneCell[]>(() =>
       isInWindow,
       crossesThreshold: threshold.value !== null && output >= threshold.value,
       barBottom: Math.min(value, zeroHeight.value) * 100,
-      barHeight: Math.abs(value - zeroHeight.value) * 100
+      barHeight: Math.abs(value - zeroHeight.value) * 100,
+      hangsBelowZero: value < zeroHeight.value
     }
   })
 )
@@ -239,7 +242,7 @@ const paintReadout = computed(() => {
           @click="store.toggleLaneCollapsed(laneId)"
         >
           <svg class="caret" viewBox="0 0 8 8" aria-hidden="true">
-            <path d="M2 1.4 5.6 4 2 6.6z" fill="currentColor" />
+            <path d="M2.2 1.4 5.8 4 2.2 6.6z" fill="currentColor" />
           </svg>
           <span>{{ definition.label }}</span>
         </button>
@@ -268,6 +271,7 @@ const paintReadout = computed(() => {
         <ActionIcon
           name="lock"
           compact
+          quiet
           :active="lane.locked"
           :title="lane.locked ? 'Unlock lane' : 'Lock lane against reset and randomize'"
           @click="store.toggleLaneLock(laneId)"
@@ -331,6 +335,7 @@ const paintReadout = computed(() => {
           >
             <div
               class="bar"
+              :class="{ 'hangs-below': cell.hangsBelowZero }"
               :style="{ bottom: `${cell.barBottom}%`, height: `${cell.barHeight}%` }"
             />
           </div>
@@ -433,7 +438,9 @@ const paintReadout = computed(() => {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: var(--space-2);
+  /* The range control reads as a second thing the lane has rather than a second line of its name,
+     so it stands off the row above by more than the icons in that row stand off each other. */
+  gap: var(--space-5);
   /* The lane clips to its padding box, which leaves the inset below the header for anything
      overflowing it to show through - a folded lane showed the top edge of its range control that
      way. The header keeps its own overflow, so what does not fit in it is simply not there. */
@@ -456,7 +463,7 @@ const paintReadout = computed(() => {
   padding: 0;
   background: transparent;
   border: none;
-  color: var(--text-dim);
+  color: var(--text-soft);
   font-size: var(--text-lane);
   letter-spacing: 0.02em;
   text-align: left;
@@ -478,8 +485,14 @@ const paintReadout = computed(() => {
   color: var(--text);
 }
 
-/// Points down at a lane that is open and along at one that is folded, the way a disclosure does.
+/**
+ * Points down at a lane that is open and along at one that is folded, the way a disclosure does.
+ * Centred on the capitals beside it rather than on their line box, which carries a descender the
+ * lane names hardly use - half a pixel, but it is the only thing holding the row off level.
+ */
 .caret {
+  position: relative;
+  top: 0.5px;
   width: 8px;
   height: 8px;
   flex: none;
@@ -500,15 +513,14 @@ const paintReadout = computed(() => {
   gap: var(--space-2);
 }
 
+/// The pattern was never a control, so it sits straight on the band rather than inside a well.
+/// What separates one step from the next is the gap between them and nothing else.
 .track {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--bg-sunken);
-  border-radius: var(--radius-lg);
   touch-action: none;
   cursor: crosshair;
   user-select: none;
@@ -526,45 +538,64 @@ const paintReadout = computed(() => {
   border-radius: var(--radius-sm);
   overflow: hidden;
 
+  /// One surface step lighter, and standing off the step before it, so sixteen identical columns
+  /// become four bars that can be counted without a ruler.
   &.beat {
     background: var(--bg-cell-beat);
+
+    &:not(:first-child) {
+      margin-left: var(--space-1);
+    }
   }
 
-  // Slots the lane's window doesn't cover never play, so they recede rather than compete.
+  // Slots the lane's window doesn't cover never play, so they recede rather than compete - but
+  // they keep their values at reduced contrast rather than going blank.
   &.outside {
     background: var(--bg-cell-inert);
 
     .bar {
-      background: var(--bar-inert);
+      background: var(--accent-wash-faint);
+      border-color: var(--cap-inert);
     }
   }
 
   /**
-   * As a pseudo-element rather than the cell's own box-shadow: an inset shadow paints beneath
-   * the cell's children, so the bar would cover the part of the ring it overlaps.
+   * Blue says playhead and nothing else, so it is a column standing over the step rather than a
+   * ring drawn around it: a wash with a leading edge on the step's own start. As a pseudo-element
+   * rather than the cell's box-shadow, which would paint beneath the bar it covers.
    */
   &.playing::after {
     content: '';
     position: absolute;
     inset: 0;
-    box-shadow: inset 0 0 0 1px var(--marker);
-    border-radius: inherit;
+    background: var(--marker-wash);
+    border-left: 1px solid var(--marker);
     pointer-events: none;
   }
 }
 
+/// A cap on a wash rather than solid mass: the cap is the value, the wash only reaches back to
+/// zero. The floor keeps the cap drawn at values too small to hold it.
 .bar {
   position: absolute;
   left: 0;
   right: 0;
-  background: var(--bar-idle);
+  min-height: var(--cap-height);
+  background: var(--accent-wash-faint);
+  border-top: var(--cap-height) solid var(--cap-idle);
   transition:
     height var(--dur-signal),
     bottom var(--dur-signal);
 }
 
+.bar.hangs-below {
+  border-top: none;
+  border-bottom: var(--cap-height) solid var(--cap-idle);
+}
+
 .cell.on .bar {
-  background: var(--accent);
+  background: var(--accent-wash);
+  border-color: var(--accent);
 }
 
 /**
@@ -587,8 +618,9 @@ const paintReadout = computed(() => {
     bottom: 0;
     left: 4px;
     width: 2px;
-    background: var(--marker);
+    background: var(--text-dim);
     border-radius: 1px;
+    transition: background-color var(--dur-control);
   }
 
   &:hover::after,
@@ -597,12 +629,13 @@ const paintReadout = computed(() => {
   }
 }
 
-/// Inset by the track's own padding, so the line spans exactly the cells and nothing more.
+/// Where Density or Hold cuts the lane. Neutral rather than blue: it is a limit being applied to
+/// the values, not the playhead, and blue is the playhead's alone.
 .threshold {
   position: absolute;
-  left: var(--space-1);
-  right: var(--space-1);
-  border-top: 1px dashed var(--marker);
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--border-strong);
   pointer-events: none;
 }
 
@@ -610,9 +643,9 @@ const paintReadout = computed(() => {
 /// tested against; this one is only where nothing is being asked for.
 .zero {
   position: absolute;
-  left: var(--space-1);
-  right: var(--space-1);
-  border-top: 1px solid var(--border-strong);
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--border);
   pointer-events: none;
 }
 

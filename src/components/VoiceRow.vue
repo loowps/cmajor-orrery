@@ -161,20 +161,22 @@ const phaseOffset = computed({
   place-items: center;
   line-height: 1;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   color: var(--text);
+  font-family: var(--font-mono);
   font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
+  transition: background-color var(--dur-control);
 
   &:hover {
-    border-color: var(--border-strong);
+    background: var(--bg-control-hover);
   }
 }
 
 .index.selected button {
   background: var(--accent);
-  border-color: var(--accent);
   color: var(--accent-ink);
 }
 
@@ -186,30 +188,27 @@ const phaseOffset = computed({
   min-width: 48px;
   padding: var(--control-inset);
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: var(--text-small);
   cursor: pointer;
   transition:
     background-color var(--dur-control),
-    border-color var(--dur-control),
     color var(--dur-control);
 
   &:hover {
-    border-color: var(--border-strong);
+    background: var(--bg-control-hover);
     color: var(--text);
   }
 
   &.on {
     background: var(--accent);
-    border-color: var(--accent);
     color: var(--accent-ink);
   }
 
   &.solo.on {
     background: var(--marker);
-    border-color: var(--marker);
     color: var(--marker-ink);
   }
 }

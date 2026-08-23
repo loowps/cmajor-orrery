@@ -60,7 +60,8 @@ main {
   gap: 0 var(--space-4);
   align-items: center;
   padding: var(--band-inset);
-  background: var(--bg-panel);
+  /// The instrument surface, so the footer keeps its band to itself here as it does on the lanes.
+  background: var(--bg-app);
 }
 
 .heading {

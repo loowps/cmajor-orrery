@@ -4,6 +4,7 @@ import { useSequencerStore } from '@/stores/sequencer'
 import { maxSteps, minPatternLength } from '@/models/sequencer.model'
 import NumberField from '@/components/NumberField.vue'
 import ActionIcon from '@/components/ActionIcon.vue'
+import BandDivider from '@/components/BandDivider.vue'
 import RandomizeControl from '@/components/RandomizeControl.vue'
 
 const store = useSequencerStore()
@@ -29,6 +30,8 @@ const {
       />
       <span class="scope">Voice {{ selectedVoiceIndex + 1 }}</span>
     </div>
+
+    <BandDivider />
 
     <div class="fields">
       <div class="field">
@@ -64,6 +67,8 @@ const {
         />
       </div>
 
+      <BandDivider />
+
       <div class="field">
         <span class="label">Reset every</span>
         <NumberField
@@ -88,6 +93,8 @@ const {
       </div>
     </div>
 
+    <BandDivider class="trailing" />
+
     <div class="actions">
       <ActionIcon
         name="reset"
@@ -104,9 +111,8 @@ const {
 
 <style scoped lang="scss">
 /**
- * Laid out on the lanes' grid: the voice group takes their header column and the fields start
- * where their tracks do, so the band lines up with the stack beneath rather than merely sharing
- * its left edge.
+ * A bar of controls rather than a row of the grid below it: the groups are sized by what they
+ * hold and parted by rules, so the band is read left to right instead of column by column.
  */
 .voice-controls {
   display: flex;
@@ -119,14 +125,16 @@ const {
 }
 
 .scope-group {
-  width: var(--lane-header-width);
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-4);
 }
 
+/// Stretched rather than centred, so the rule between the groups measures the band rather than
+/// the row of fields, and meets the grooves the outer rules meet.
 .fields {
+  align-self: stretch;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -157,6 +165,15 @@ const {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+}
+
+/// The band pays back its own inset, so the rule reaches the grooves above and below it.
+.band-divider {
+  margin-block: calc(-1 * var(--band-inset));
+}
+
+/// Carries the gap that used to push the actions right, so the pair travels with the rule.
+.band-divider.trailing {
   margin-left: auto;
 }
 </style>

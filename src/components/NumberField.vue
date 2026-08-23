@@ -142,30 +142,32 @@ function cancel() {
 </template>
 
 <style scoped lang="scss">
+/// The same well every other control sits in, so a field never reads as heavier than the button
+/// beside it. Being worked is an inset ring rather than a border, which costs the row no width.
 .number-field {
   position: relative;
   width: 52px;
   height: 22px;
   flex: none;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   overflow: hidden;
   cursor: ns-resize;
   user-select: none;
   touch-action: none;
+  transition: background-color var(--dur-control);
 
   &:hover {
-    border-color: var(--border-strong);
     background: var(--bg-control-hover);
   }
 
-  &.dragging {
-    border-color: var(--accent);
+  &.dragging,
+  &.editing {
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
 
   &.editing {
-    border-color: var(--accent);
     cursor: text;
     user-select: text;
   }
@@ -173,9 +175,8 @@ function cancel() {
 
 .value {
   display: block;
-  line-height: 20px;
+  line-height: 22px;
   font-size: var(--text-label);
-  font-variant-numeric: tabular-nums;
   color: var(--text);
 }
 
@@ -186,8 +187,15 @@ input {
   border: 0 none;
   outline: none;
   font-size: var(--text-label);
-  font-variant-numeric: tabular-nums;
   color: var(--text);
+}
+
+/// Every number in the window is mono and tabular, so a value that changes under the pointer
+/// cannot shift the numbers standing next to it.
+.value,
+input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .value,

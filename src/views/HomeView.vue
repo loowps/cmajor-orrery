@@ -28,15 +28,17 @@ main {
  * window means taller lanes rather than empty space. Once every lane is down to its minimum there
  * is nothing left to give, so the stack scrolls rather than squashing its controls away.
  *
- * The stack owns the surface and the lanes sit flush on it, parted by a hairline groove. The seam
- * still reads as a seam, but no height is spent on gaps between panels.
+ * The stack sits on the app surface rather than on a panel of its own, so the two bands that do
+ * carry one - the voice header and the footer - are the only things in the window standing above
+ * it. The lanes sit flush on that surface, parted by a hairline groove, and no height is spent on
+ * gaps between panels.
  */
 .sequencer {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
+  background: var(--bg-app);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;

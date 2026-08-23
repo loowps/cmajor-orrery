@@ -64,20 +64,21 @@ const voiceSummaries = computed(() =>
   place-items: center;
   padding: 0;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
   color: var(--text);
+  font-family: var(--font-mono);
   font-size: var(--text-label);
+  font-variant-numeric: tabular-nums;
   /* Hugs the glyphs, so centring the line box centres what you actually see. */
   line-height: 1;
   cursor: pointer;
   transition:
-    border-color var(--dur-control),
+    color var(--dur-control),
     background-color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);
-    border-color: var(--border-strong);
   }
 
   &.muted {
@@ -86,7 +87,6 @@ const voiceSummaries = computed(() =>
 
   &.selected {
     background: var(--accent);
-    border-color: var(--accent);
     color: var(--accent-ink);
   }
 }
@@ -107,6 +107,6 @@ const voiceSummaries = computed(() =>
 }
 
 .voice.muted .state {
-  opacity: 0.22;
+  opacity: 0.18;
 }
 </style>

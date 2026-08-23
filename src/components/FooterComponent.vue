@@ -2,6 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import { computed, useTemplateRef } from 'vue'
 import AboutDialog from '@/components/AboutDialog.vue'
+import BandDivider from '@/components/BandDivider.vue'
 import SceneSelector from '@/components/SceneSelector.vue'
 import VendorLogo from '@/components/VendorLogo.vue'
 import VoiceStrip from '@/components/VoiceStrip.vue'
@@ -26,7 +27,11 @@ function navigate() {
       </button>
     </nav>
 
+    <BandDivider />
+
     <SceneSelector />
+
+    <BandDivider v-if="isHome" />
 
     <VoiceStrip v-if="isHome" />
 
@@ -48,7 +53,13 @@ footer {
      so counting it would leave everything in the bar sitting a pixel low. */
   padding: calc(var(--band-inset) - 1px) var(--band-inset) var(--band-inset);
   background: var(--bg-panel);
-  border-top: 1px solid var(--border);
+  /// The same groove that parts the lanes, so no band in the window is fenced off by a bright rule.
+  border-top: 1px solid var(--seam);
+}
+
+/// The band pays back its own inset, so the rule reaches the groove above it and the foot below.
+.band-divider {
+  margin-block: calc(-1 * (var(--band-inset) - 1px)) calc(-1 * var(--band-inset));
 }
 
 /// A signature rather than a control, so only a hover says it opens anything.
@@ -83,8 +94,11 @@ footer {
  * all capitals, so the room kept for ascenders, descenders and the trailing letter-space is space
  * they never use. Given back, the padding around the pair reads as even on all four sides.
  */
+/// The vendor signs the plugin, the plugin is what is being used - so the name carries the ink
+/// and the house above it stands back a step, with only the slashes holding their brass.
 .mark {
   margin-top: -0.06em;
+  color: var(--text-dim);
 }
 
 .name {
@@ -105,14 +119,15 @@ footer {
   user-select: none;
 }
 
+/// The same well as every other control, so the one outlined pill in the window is gone.
 .nav-button {
   height: var(--control-size);
   display: inline-flex;
   align-items: center;
-  padding: 0 var(--space-6);
-  border: 1px solid var(--border);
+  padding: 0 var(--space-5);
+  border: none;
   border-radius: var(--radius);
-  background: transparent;
+  background: var(--bg-control);
   color: var(--text-dim);
   font-size: var(--text-label);
   letter-spacing: 0.02em;
@@ -120,12 +135,10 @@ footer {
   cursor: pointer;
   transition:
     background-color var(--dur-control),
-    border-color var(--dur-control),
     color var(--dur-control);
 
   &:hover {
     background: var(--bg-control-hover);
-    border-color: var(--border-strong);
     color: var(--text);
   }
 }

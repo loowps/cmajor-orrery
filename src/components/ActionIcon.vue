@@ -19,11 +19,15 @@ export type ActionIconTone = 'accent' | 'marker'
 const {
   active = false,
   compact = false,
+  quiet = false,
   tone = 'accent'
 } = defineProps<{
   name: ActionIconName
   active?: boolean
   compact?: boolean
+  /// Engaged as brass ink in the well rather than a brass fill, for the one button that repeats
+  /// down a column: eight filled locks would out-shout the pattern they are drawn beside.
+  quiet?: boolean
   tone?: ActionIconTone
   title?: string
 }>()
@@ -32,7 +36,7 @@ const {
 <template>
   <button
     class="action-icon"
-    :class="{ active, compact, marker: tone === 'marker' }"
+    :class="{ active, compact, quiet, marker: tone === 'marker' }"
     :title="title"
   >
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -197,13 +201,12 @@ const {
   place-items: center;
   padding: 0;
   background: var(--bg-control);
-  border: 1px solid var(--border);
+  border: none;
   border-radius: var(--radius);
-  color: var(--text-faint);
+  color: var(--text-dim);
   cursor: pointer;
   transition:
     background-color var(--dur-control),
-    border-color var(--dur-control),
     color var(--dur-control);
 
   svg {
@@ -223,19 +226,17 @@ const {
 
   &:hover:not(:disabled) {
     background: var(--bg-control-hover);
-    border-color: var(--border-strong);
     color: var(--text);
   }
 
   &:active:not(:disabled) {
     background: var(--accent-dim);
-    border-color: var(--accent-dim);
     color: var(--accent-ink);
   }
 
+  /* The whole slot fills, which is the one state that reads from across the room. */
   &.active {
     background: var(--on-fill);
-    border-color: var(--on-fill);
     color: var(--on-ink);
   }
 
@@ -243,14 +244,22 @@ const {
      hover answers the pointer without hiding what the button is. */
   &.active:hover:not(:disabled) {
     background: var(--on-fill-hover);
-    border-color: var(--on-fill-hover);
     color: var(--on-ink);
   }
 
   &.active:active:not(:disabled) {
     background: var(--accent-dim);
-    border-color: var(--accent-dim);
     color: var(--accent-ink);
+  }
+
+  &.active.quiet {
+    background: var(--bg-control);
+    color: var(--on-fill);
+  }
+
+  &.active.quiet:hover:not(:disabled) {
+    background: var(--bg-control-hover);
+    color: var(--on-fill-hover);
   }
 
   &:disabled {
