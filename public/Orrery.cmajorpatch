@@ -8,6 +8,8 @@
     "category":      "generator",
     "isInstrument":  true,
 
+    "resources":     ["*.css", "*.ttf"],
+
     "source":        [ "Orrery.cmajor" ],
 
     "view":          {
