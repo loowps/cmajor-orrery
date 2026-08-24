@@ -6,11 +6,13 @@
   "engines": {
     "node": "24.x"
   },
-  "packageManager": "pnpm@11.22.0",
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
     "dev": "vite",
     "build-dev": "run-p type-check-watch \"build-watch {@}\" --",
     "build": "run-p type-check \"build-only {@}\" --",
+    "build-clap": "run-s build generate-clap",
+    "generate-clap": "cmaj generate --target=clap --clapIncludePath=../clap/include --output=dist-clap dist/Orrery.cmajorpatch",
     "preview": "vite preview",
     "test:unit": "vitest",
     "test:e2e:ui": "playwright test --ui",
