@@ -27,9 +27,9 @@ jobs:
     name: Lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -41,9 +41,9 @@ jobs:
     name: Unit tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -54,16 +54,16 @@ jobs:
     name: E2E tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report
@@ -74,9 +74,9 @@ jobs:
     name: Build patch
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -98,11 +98,25 @@ jobs:
 
       - name: Install Cmajor
         run: |
-          curl -fsSL -o cmajor.zip \
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libasound2t64 libjack-jackd2-0 libgtk-3-0t64 libwebkit2gtk-4.1-0
+          curl -fsSL -o "$RUNNER_TEMP/cmajor.zip" \
             "https://github.com/cmajor-lang/cmajor/releases/download/${CMAJOR_VERSION}/cmajor.linux.x64.zip"
-          unzip -q cmajor.zip -d "$RUNNER_TEMP/cmajor"
-          cmaj="$(find "$RUNNER_TEMP/cmajor" -type f -name cmaj | head -n 1)"
+          unzip -q "$RUNNER_TEMP/cmajor.zip" -d "$RUNNER_TEMP/cmajor"
+          cmaj="$(find "$RUNNER_TEMP/cmajor" -type f -name cmaj -print -quit)"
+          if [ -z "$cmaj" ]; then
+            echo "::error::No cmaj executable in the Cmajor archive"
+            find "$RUNNER_TEMP/cmajor" -maxdepth 3
+            exit 1
+          fi
           chmod +x "$cmaj"
+          missing="$(ldd "$cmaj" | grep 'not found' || true)"
+          if [ -n "$missing" ]; then
+            echo "::error::cmaj is missing shared libraries"
+            echo "$missing"
+            exit 1
+          fi
           echo "$(dirname "$cmaj")" >> "$GITHUB_PATH"
 
       # cmaj reports compile errors but still exits 0, so its output has to be inspected.
@@ -112,7 +126,7 @@ jobs:
           cmaj play --no-gui --dry-run --stop-on-error dist/Orrery.cmajorpatch 2>&1 | tee cmaj.log
           if grep -q ': error:' cmaj.log; then exit 1; fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: orrery-patch
           path: dist/
